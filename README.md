@@ -1,6 +1,6 @@
 # Causal Sentiment Engine
 
-A causal factor graph + agentic sentiment engine for quant finance, inspired by Bridgewater's systematic macro approach. The system models the financial world as an interconnected directed graph where nodes are financial instruments and macro/micro factors, and edges represent causal relationships. An AI agent autonomously fetches real-world data, performs multi-source sentiment analysis, and propagates impact signals through this causal network — all visualized as an interactive 3D force-directed graph in the browser.
+A causal factor graph + agentic sentiment engine for quant finance, drawing from ideas in Bridgewater's systematic macro approach. The system models the financial world as an interconnected directed graph where nodes are financial instruments and macro/micro factors, and edges represent causal relationships. An AI agent autonomously fetches real-world data, performs multi-source sentiment analysis, and propagates impact signals through this causal network — all visualized as an interactive 3D force-directed graph in the browser.
 
 > **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
 
@@ -166,7 +166,7 @@ The AI agent uses a **tool-use loop** — not a simple prompt-response. Here's t
 | **State Management** | Zustand | Lightweight, no boilerplate, perfect for real-time updates |
 | **Charts** | TradingView Lightweight Charts | Professional-grade financial time-series charts |
 | **Styling** | Tailwind CSS | Rapid UI development |
-| **Deployment** | Docker Compose | One-command local deployment |
+| **Deployment** | Docker Compose | One-command local deployment (no server needed) |
 
 ### Data Sources
 
@@ -223,7 +223,7 @@ The AI agent uses a **tool-use loop** — not a simple prompt-response. Here's t
    docker compose up --build
    ```
 
-5. Open **http://localhost:3000** and click **Run Full Analysis** to trigger the first agent run.
+5. Open **http://localhost:3000** — everything runs locally on your machine, no remote server required. and click **Run Full Analysis** to trigger the first agent run.
 
 ### Usage
 
@@ -434,6 +434,6 @@ MIT
 ## Acknowledgments
 
 - Built with the help of [Claude](https://claude.ai) (Anthropic)
-- Inspired by Bridgewater Associates' systematic macro research approach
+- Drawing from ideas in Bridgewater Associates' systematic macro research
 - 3D graph visualization powered by [react-force-graph-3d](https://github.com/vasturiano/react-force-graph)
 - Financial charts by [TradingView Lightweight Charts](https://github.com/nicktom/lightweight-charts)
