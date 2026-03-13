@@ -47,7 +47,7 @@ async def find_correlated_unconnected_pairs(
             ts_a = ts_cache.get(nid_a, [])
             ts_b = ts_cache.get(nid_b, [])
 
-            if len(ts_a) < 5 or len(ts_b) < 5:
+            if len(ts_a) < 3 or len(ts_b) < 3:
                 continue
 
             aligned_a, aligned_b = _align_timeseries(ts_a, ts_b)

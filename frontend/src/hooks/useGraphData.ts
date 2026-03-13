@@ -33,10 +33,12 @@ interface GraphStore {
   anomalies: AnomalyInfo[];
   regime: RegimeInfo | null;
   snapshotTimestamp: string | null;
+  focusNodeId: string | null;
   clustered: boolean;
   loading: boolean;
   error: string | null;
 
+  focusNode: (nodeId: string) => void;
   fetchGraph: () => Promise<void>;
   fetchAnomalies: () => Promise<void>;
   fetchRegime: () => Promise<void>;
@@ -58,6 +60,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   anomalies: [],
   regime: null,
   snapshotTimestamp: null,
+  focusNodeId: null,
   clustered: false,
   loading: false,
   error: null,
@@ -119,6 +122,11 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     } catch (e) {
       set({ error: (e as Error).message, loading: false });
     }
+  },
+
+  focusNode: (nodeId) => {
+    const node = get().nodes.find((n) => n.id === nodeId) || null;
+    set({ focusNodeId: nodeId, selectedNode: node });
   },
 
   setSelectedNode: (node) => set({ selectedNode: node }),

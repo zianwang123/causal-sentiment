@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     anomaly_min_observations: int = 5
 
     # Correlations
-    correlation_bucket_hours: int = 6
-    correlation_min_data_points: int = 5
+    correlation_bucket_hours: int = 3
+    correlation_min_data_points: int = 3
     correlation_lookback_days: int = 90
     correlation_direction_flip_threshold: float = 0.3
 

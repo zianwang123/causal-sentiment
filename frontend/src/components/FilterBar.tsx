@@ -126,17 +126,6 @@ export default function FilterBar() {
             <div className="text-[10px] text-gray-500 uppercase mb-1">LLM Provider</div>
             <div className="flex gap-1">
               <button
-                onClick={() => switchProvider("anthropic")}
-                disabled={!llmConfig.has_anthropic_key}
-                className={`flex-1 text-[11px] py-1.5 rounded transition-colors ${
-                  llmConfig.provider === "anthropic"
-                    ? "bg-orange-700 text-white"
-                    : "bg-gray-700 text-gray-400 hover:text-gray-200"
-                } ${!llmConfig.has_anthropic_key ? "opacity-40 cursor-not-allowed" : ""}`}
-              >
-                Claude
-              </button>
-              <button
                 onClick={() => switchProvider("openai")}
                 disabled={!llmConfig.has_openai_key}
                 className={`flex-1 text-[11px] py-1.5 rounded transition-colors ${
@@ -146,6 +135,17 @@ export default function FilterBar() {
                 } ${!llmConfig.has_openai_key ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 GPT
+              </button>
+              <button
+                onClick={() => switchProvider("anthropic")}
+                disabled={!llmConfig.has_anthropic_key}
+                className={`flex-1 text-[11px] py-1.5 rounded transition-colors ${
+                  llmConfig.provider === "anthropic"
+                    ? "bg-orange-700 text-white"
+                    : "bg-gray-700 text-gray-400 hover:text-gray-200"
+                } ${!llmConfig.has_anthropic_key ? "opacity-40 cursor-not-allowed" : ""}`}
+              >
+                Claude
               </button>
             </div>
             <div className="text-[9px] text-gray-500 mt-0.5">

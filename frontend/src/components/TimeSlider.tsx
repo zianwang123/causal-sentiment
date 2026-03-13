@@ -88,63 +88,67 @@ export default function TimeSlider() {
     clearSnapshot();
   };
 
-  if (!open) {
-    return (
+  const currentTimestamp = getTimestamp(sliderValue);
+  const isLive = sliderValue >= TOTAL_STEPS;
+
+  return (
+    <div className="relative">
       <button
         onClick={() => {
-          now.current = new Date();
-          setOpen(true);
+          if (open) {
+            handleClose();
+          } else {
+            now.current = new Date();
+            setOpen(true);
+          }
         }}
         className="bg-gray-800/90 backdrop-blur border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 hover:text-white transition-colors"
       >
         Time Travel
       </button>
-    );
-  }
 
-  const currentTimestamp = getTimestamp(sliderValue);
-  const isLive = sliderValue >= TOTAL_STEPS;
+      {open && (
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-[6] w-[600px] max-w-[90vw] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg px-4 py-3 shadow-xl">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPlaying(!playing)}
+                className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
+              >
+                {playing ? "⏸" : "▶"}
+              </button>
+              <span className="text-xs text-gray-300 font-mono">
+                {isLive ? (
+                  <span className="text-green-400">● LIVE</span>
+                ) : (
+                  formatTimestamp(currentTimestamp)
+                )}
+              </span>
+            </div>
+            <button
+              onClick={handleClose}
+              className="text-gray-400 hover:text-white text-sm"
+            >
+              &times;
+            </button>
+          </div>
 
-  return (
-    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[6] w-[600px] max-w-[90vw] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg px-4 py-3 shadow-xl">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPlaying(!playing)}
-            className="text-xs bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded"
-          >
-            {playing ? "⏸" : "▶"}
-          </button>
-          <span className="text-xs text-gray-300 font-mono">
-            {isLive ? (
-              <span className="text-green-400">● LIVE</span>
-            ) : (
-              formatTimestamp(currentTimestamp)
-            )}
-          </span>
+          <input
+            type="range"
+            min={0}
+            max={TOTAL_STEPS}
+            step={1}
+            value={sliderValue}
+            onChange={(e) => handleSliderChange(Number(e.target.value))}
+            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+          />
+
+          <div className="flex justify-between mt-1 text-[10px] text-gray-500">
+            <span>{formatTimestamp(getTimestamp(0))}</span>
+            <span>Now</span>
+          </div>
         </div>
-        <button
-          onClick={handleClose}
-          className="text-gray-400 hover:text-white text-sm"
-        >
-          &times;
-        </button>
-      </div>
-
-      <input
-        type="range"
-        min={0}
-        max={TOTAL_STEPS}
-        step={1}
-        value={sliderValue}
-        onChange={(e) => handleSliderChange(Number(e.target.value))}
-        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-      />
-
-      <div className="flex justify-between mt-1 text-[10px] text-gray-500">
-        <span>{formatTimestamp(getTimestamp(0))}</span>
-        <span>Now</span>
-      </div>
+      )}
     </div>
   );
 }

@@ -52,9 +52,9 @@ def test_align_timeseries_no_overlap():
 
 
 def test_align_timeseries_insufficient_buckets():
-    # Only 3 common buckets, below min_data_points=5
-    ts_a = _ts([0, 6, 12], [1, 2, 3])
-    ts_b = _ts([0, 6, 12], [10, 20, 30])
+    # Only 2 common buckets, below min_data_points=3
+    ts_a = _ts([0, 6], [1, 2])
+    ts_b = _ts([0, 6], [10, 20])
     a, b = _align_timeseries(ts_a, ts_b, bucket_hours=6)
     assert len(a) == 0  # Insufficient
 
@@ -79,8 +79,8 @@ def test_pearson_negative():
 
 
 def test_pearson_insufficient_data():
-    a = np.array([1.0, 2.0, 3.0])
-    b = np.array([4.0, 5.0, 6.0])
+    a = np.array([1.0, 2.0])
+    b = np.array([4.0, 5.0])
     corr = _pearson_correlation(a, b)
     assert corr is None
 

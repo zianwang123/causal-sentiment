@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useGraphStore } from "@/hooks/useGraphData";
 import { useNodeSelection } from "@/hooks/useNodeSelection";
@@ -36,6 +36,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const anomalies = useGraphStore((s) => s.anomalies);
   const fetchAnomalies = useGraphStore((s) => s.fetchAnomalies);
   const clustered = useGraphStore((s) => s.clustered);
+  const focusNodeId = useGraphStore((s) => s.focusNodeId);
   const { handleNodeClick } = useNodeSelection();
   const graphRef = useRef<any>(null);
 
@@ -81,6 +82,27 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     }
     fg.d3ReheatSimulation();
   }, [clustered, nodes]);
+
+  // Handle focusNodeId from store (triggered by NodeLocator)
+  useEffect(() => {
+    if (!focusNodeId || !graphRef.current) return;
+    const node = nodes.find((n) => n.id === focusNodeId) as any;
+    if (node && node.x !== undefined) {
+      const distance = 200;
+      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+      graphRef.current.cameraPosition(
+        {
+          x: node.x * distRatio,
+          y: node.y * distRatio,
+          z: node.z * distRatio,
+        },
+        node,
+        1500
+      );
+    }
+    // Clear focusNodeId after handling
+    useGraphStore.setState({ focusNodeId: null });
+  }, [focusNodeId, nodes]);
 
   const graphData = { nodes, links };
 

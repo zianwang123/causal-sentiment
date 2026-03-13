@@ -10,6 +10,7 @@ import TimeSlider from "@/components/TimeSlider";
 import PortfolioPanel from "@/components/PortfolioPanel";
 import TopologySuggestions from "@/components/TopologySuggestions";
 import UserGuide from "@/components/UserGuide";
+import NodeLocator from "@/components/NodeLocator";
 import { useGraphStore, useGraphWebSocket } from "@/hooks/useGraphData";
 
 export default function Home() {
@@ -49,6 +50,7 @@ export default function Home() {
       {/* Bottom toolbar: centered */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-2">
         <AgentRunLog />
+        <NodeLocator />
         <TopologySuggestions />
         <TimeSlider />
         <PortfolioPanel onPortfolioNodes={handlePortfolioNodes} />

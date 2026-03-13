@@ -426,11 +426,20 @@ async def suggest_topology(session: AsyncSession = Depends(get_session)):
     from app.main import app_state
 
     # Pre-check: are there enough candidates?
+    # Count how many nodes have sufficient observation data
+    from app.graph_engine.correlations import _get_node_timeseries
+    all_node_ids = list(app_state.graph.nodes())
+    nodes_with_data = 0
+    for nid in all_node_ids:
+        ts = await _get_node_timeseries(session, nid, 90)
+        if len(ts) >= 3:
+            nodes_with_data += 1
+
     candidates = await find_correlated_unconnected_pairs(session, app_state.graph)
     if not candidates:
         return TopologySuggestResponse(
             suggestions=[],
-            message="Not enough sentiment data to find correlated node pairs. Run some analyses first to build up observation history.",
+            message=f"Not enough correlated pairs found. {nodes_with_data}/{len(all_node_ids)} nodes have 3+ observations. Run more analyses across different time windows to build history.",
         )
 
     suggestions = await suggest_edges_with_llm(session, app_state.graph)
