@@ -114,11 +114,8 @@ The AI agent uses a **tool-use loop** — not a simple prompt-response. Here's t
 
 ### Key Design Decisions
 
-- **No LLM framework** — The agent is a raw tool-use loop using the Anthropic/OpenAI SDKs directly. No LangChain, no CrewAI. This keeps the system simple, debuggable, and transparent.
-- **Expert-defined graph topology** — The 52 nodes and 117 edges are hand-curated based on macro finance domain knowledge, not auto-generated. This ensures the causal relationships are financially meaningful.
-- **Dynamic weight adaptation** — While the graph topology is fixed, edge weights are dynamically adjusted based on 90-day rolling Pearson correlations between connected node pairs. This lets the system learn from empirical data while maintaining the expert-defined structure.
+- **Dynamic weight adaptation** — Edge weights are dynamically adjusted based on 90-day rolling Pearson correlations between connected node pairs. The system learns from empirical data while maintaining the expert-defined causal structure.
 - **Sentiment decay** — Sentiment observations have a 24-hour half-life. Old signals fade naturally, preventing stale data from dominating the graph.
-- **Dual LLM support** — Claude and GPT are interchangeable at runtime. The same tool definitions work with both providers. Useful for comparing outputs or if one provider has an outage.
 
 ---
 
