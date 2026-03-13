@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     propagation_blend_ratio: float = 0.3
 
     # Agent
-    agent_max_tool_rounds: int = 20
+    agent_max_tool_rounds: int = 25
 
     # Anomaly detection
     anomaly_z_threshold: float = 2.0

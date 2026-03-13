@@ -90,25 +90,29 @@ async def trigger_analysis(
     request: AnalysisRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Trigger a Claude agent analysis run."""
+    """Trigger a Claude agent analysis run (returns immediately, runs in background)."""
     from app.main import app_state
 
     node_ids = request.node_ids
     if not node_ids:
         node_ids = list(app_state.graph.nodes())
 
-    agent_run = await run_analysis(
-        node_ids=node_ids,
-        session=session,
-        graph=app_state.graph,
-        trigger=request.trigger,
-    )
-
-    # Notify WebSocket clients
-    task = asyncio.create_task(_notify_graph_update(app_state))
+    # Run analysis in background so progress bar works via WebSocket
+    task = asyncio.create_task(_run_analysis_background(node_ids, request.trigger, app_state))
     task.add_done_callback(_handle_notification_error)
 
-    return _run_to_out(agent_run)
+    # Return a placeholder response immediately
+    return AgentRunOut(
+        id=0,
+        trigger=request.trigger,
+        status="running",
+        nodes_analyzed=node_ids,
+        tool_calls=None,
+        summary=None,
+        started_at=datetime.utcnow(),
+        finished_at=None,
+        error=None,
+    )
 
 
 @router.get("/runs", response_model=list[AgentRunOut])
@@ -132,6 +136,31 @@ def _run_to_out(r: AgentRun) -> AgentRunOut:
         finished_at=r.finished_at,
         error=r.error,
     )
+
+
+async def _run_analysis_background(node_ids: list[str], trigger: str, app_state):
+    """Run agent analysis in background with its own DB session."""
+    from app.api.websocket import manager
+    from app.db.connection import async_session
+
+    async with async_session() as session:
+        agent_run = await run_analysis(
+            node_ids=node_ids,
+            session=session,
+            graph=app_state.graph,
+            trigger=trigger,
+        )
+        # Notify WebSocket clients: analysis complete + updated graph
+        await manager.broadcast({
+            "type": "agent_complete",
+            "data": {
+                "id": agent_run.id,
+                "status": agent_run.status,
+                "summary": agent_run.summary,
+                "error": agent_run.error,
+            },
+        })
+        await _notify_graph_update(app_state)
 
 
 def _handle_notification_error(task: asyncio.Task) -> None:

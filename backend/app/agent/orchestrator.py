@@ -1,4 +1,4 @@
-"""LLM agent orchestrator — supports Claude and GPT with tool-use loop."""
+"""LLM agent orchestrator — three-phase reasoning loop (Plan → Analyze → Validate)."""
 
 from __future__ import annotations
 
@@ -11,21 +11,46 @@ import networkx as nx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.llm_client import append_tool_results, chat_with_tools
-from app.agent.prompts import ANALYSIS_PROMPT_TEMPLATE, SYSTEM_PROMPT
+from app.agent.prompts import (
+    ANALYSIS_PROMPT_TEMPLATE,
+    PLANNING_PROMPT_TEMPLATE,
+    SYSTEM_PROMPT,
+    VALIDATION_PROMPT,
+)
 from app.agent.schemas import AGENT_TOOLS
 from app.agent.tools import (
     fetch_fred_data,
     fetch_market_prices,
     fetch_sec_filings,
+    get_analysis_context,
     get_graph_neighborhood,
+    record_prediction,
     search_news,
     search_reddit,
     update_sentiment_signal,
+    validate_consistency,
 )
 from app.config import settings
 from app.models.observations import AgentRun
 
 logger = logging.getLogger(__name__)
+
+# Phase boundaries (round ranges)
+PLANNING_ROUNDS = 3
+ANALYSIS_ROUNDS = 17
+VALIDATION_ROUNDS = 5
+MAX_ROUNDS = PLANNING_ROUNDS + ANALYSIS_ROUNDS + VALIDATION_ROUNDS  # 25
+
+
+def _get_phase(round_num: int) -> str:
+    """Return the current phase name based on round number."""
+    if round_num < PLANNING_ROUNDS:
+        return "planning"
+    elif round_num < PLANNING_ROUNDS + ANALYSIS_ROUNDS:
+        return "analysis"
+    else:
+        return "validation"
+
 
 async def run_analysis(
     node_ids: list[str],
@@ -33,7 +58,7 @@ async def run_analysis(
     graph: nx.DiGraph,
     trigger: str = "manual",
 ) -> AgentRun:
-    """Run the LLM agent to analyze and update sentiment for given nodes."""
+    """Run the LLM agent with Plan → Analyze → Validate phases."""
     # Validate API key before creating a "running" AgentRun
     provider = settings.llm_provider
     if provider == "openai" and not settings.openai_api_key:
@@ -87,55 +112,98 @@ async def run_analysis(
     except Exception:
         pass
 
-    user_prompt = ANALYSIS_PROMPT_TEMPLATE.format(node_ids=", ".join(node_ids)) + portfolio_context
-    messages: list[dict] = [{"role": "user", "content": user_prompt}]
     tool_calls_log: list[dict] = []
+    nodes_updated: list[str] = []  # Track which nodes get updated for validation
 
     try:
-        for round_num in range(settings.agent_max_tool_rounds):
+        # ── PHASE 1: PLANNING ──────────────────────────────────────────
+        planning_prompt = PLANNING_PROMPT_TEMPLATE.format(node_ids=", ".join(node_ids)) + portfolio_context
+        messages: list[dict] = [{"role": "user", "content": planning_prompt}]
+
+        for round_num in range(PLANNING_ROUNDS):
+            phase = "planning"
             llm_response, messages = await chat_with_tools(
                 system=system_prompt,
                 messages=messages,
                 tools=AGENT_TOOLS,
             )
 
-            # Check if we're done (no tool calls)
-            if llm_response.done:
-                if llm_response.text:
-                    agent_run.summary = llm_response.text
+            if llm_response.done or not llm_response.tool_calls:
                 break
 
-            if not llm_response.tool_calls:
-                # No tool calls and not explicitly done — treat as done
-                if llm_response.text:
-                    agent_run.summary = llm_response.text
-                break
-
-            # Execute tool calls
             results: dict[str, str] = {}
             for tc in llm_response.tool_calls:
-                logger.info("Agent tool call [round %d]: %s(%s)", round_num, tc.name, json.dumps(tc.input)[:200])
-                tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num})
-
+                logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
+                tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
                 result = await _execute_tool(tc.name, tc.input, session, graph)
                 results[tc.id] = result
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
+            _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
 
-            # Broadcast progress via WebSocket
-            try:
-                from app.api.websocket import manager
-                asyncio.create_task(manager.broadcast({
-                    "type": "agent_progress",
-                    "data": {
-                        "round": round_num + 1,
-                        "max_rounds": settings.agent_max_tool_rounds,
-                        "tool_calls": [tc.name for tc in llm_response.tool_calls],
-                        "total_tool_calls": len(tool_calls_log),
-                    },
-                }))
-            except Exception:
-                pass  # Don't let progress broadcast failure break analysis
+        # Transition to analysis: inject the analysis prompt
+        analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(node_ids=", ".join(node_ids))
+        messages.append({"role": "user", "content": analysis_prompt})
+
+        # ── PHASE 2: ANALYSIS ──────────────────────────────────────────
+        for round_num in range(PLANNING_ROUNDS, PLANNING_ROUNDS + ANALYSIS_ROUNDS):
+            phase = "analysis"
+            llm_response, messages = await chat_with_tools(
+                system=system_prompt,
+                messages=messages,
+                tools=AGENT_TOOLS,
+            )
+
+            if llm_response.done or not llm_response.tool_calls:
+                if llm_response.text:
+                    agent_run.summary = llm_response.text
+                break
+
+            results = {}
+            for tc in llm_response.tool_calls:
+                logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
+                tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
+                result = await _execute_tool(tc.name, tc.input, session, graph)
+                results[tc.id] = result
+
+                # Track nodes that get sentiment updates
+                if tc.name == "update_sentiment_signal" and "node_id" in tc.input:
+                    nodes_updated.append(tc.input["node_id"])
+
+            messages = append_tool_results(messages, llm_response.tool_calls, results)
+            _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
+
+        # ── PHASE 3: VALIDATION ────────────────────────────────────────
+        if nodes_updated:
+            validation_prompt = VALIDATION_PROMPT.format(
+                nodes_updated=", ".join(dict.fromkeys(nodes_updated)),  # unique, ordered
+            )
+            messages.append({"role": "user", "content": validation_prompt})
+
+            for round_num in range(PLANNING_ROUNDS + ANALYSIS_ROUNDS, MAX_ROUNDS):
+                phase = "validation"
+                llm_response, messages = await chat_with_tools(
+                    system=system_prompt,
+                    messages=messages,
+                    tools=AGENT_TOOLS,
+                )
+
+                if llm_response.done or not llm_response.tool_calls:
+                    if llm_response.text:
+                        # Append validation summary to existing summary
+                        existing = agent_run.summary or ""
+                        agent_run.summary = existing + ("\n\n---\n**Validation:** " + llm_response.text if existing else llm_response.text)
+                    break
+
+                results = {}
+                for tc in llm_response.tool_calls:
+                    logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
+                    tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
+                    result = await _execute_tool(tc.name, tc.input, session, graph)
+                    results[tc.id] = result
+
+                messages = append_tool_results(messages, llm_response.tool_calls, results)
+                _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
 
         agent_run.status = "completed"
         agent_run.tool_calls = tool_calls_log
@@ -145,10 +213,34 @@ async def run_analysis(
         logger.exception("Agent run failed")
         agent_run.status = "error"
         agent_run.error = str(e)
+        agent_run.tool_calls = tool_calls_log
         agent_run.finished_at = datetime.utcnow()
 
     await session.commit()
     return agent_run
+
+
+def _broadcast_progress(
+    round_num: int,
+    phase: str,
+    tool_calls: list,
+    tool_calls_log: list[dict],
+) -> None:
+    """Broadcast agent progress via WebSocket (fire-and-forget)."""
+    try:
+        from app.api.websocket import manager
+        asyncio.create_task(manager.broadcast({
+            "type": "agent_progress",
+            "data": {
+                "round": round_num + 1,
+                "max_rounds": MAX_ROUNDS,
+                "phase": phase,
+                "tool_calls": [tc.name for tc in tool_calls],
+                "total_tool_calls": len(tool_calls_log),
+            },
+        }))
+    except Exception:
+        pass
 
 
 async def _execute_tool(
@@ -192,12 +284,36 @@ async def _execute_tool(
             session=session,
             graph=graph,
             sources=tool_input.get("sources"),
+            data_freshness=tool_input.get("data_freshness"),
+            source_agreement=tool_input.get("source_agreement"),
+            signal_strength=tool_input.get("signal_strength"),
         )
     elif tool_name == "get_graph_neighborhood":
         return await get_graph_neighborhood(
             node_id=tool_input["node_id"],
             session=session,
             graph=graph,
+        )
+    elif tool_name == "get_analysis_context":
+        return await get_analysis_context(
+            session=session,
+            graph=graph,
+        )
+    elif tool_name == "validate_consistency":
+        return await validate_consistency(
+            node_ids=tool_input["node_ids"],
+            session=session,
+            graph=graph,
+        )
+    elif tool_name == "record_prediction":
+        return await record_prediction(
+            node_id=tool_input["node_id"],
+            predicted_direction=tool_input["predicted_direction"],
+            predicted_sentiment=tool_input["predicted_sentiment"],
+            reasoning=tool_input["reasoning"],
+            session=session,
+            graph=graph,
+            horizon_hours=tool_input.get("horizon_hours", 168),
         )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

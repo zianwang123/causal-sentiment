@@ -99,7 +99,7 @@ AGENT_TOOLS = [
     },
     {
         "name": "update_sentiment_signal",
-        "description": "Write a sentiment signal to a node in the causal factor graph. The sentiment will be propagated to connected nodes.",
+        "description": "Write a sentiment signal to a node in the causal factor graph. The sentiment will be propagated to connected nodes. Provide confidence breakdown (data_freshness, source_agreement, signal_strength) for more interpretable confidence scores.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -113,7 +113,7 @@ AGENT_TOOLS = [
                 },
                 "confidence": {
                     "type": "number",
-                    "description": "Confidence in this assessment from 0.0 to 1.0",
+                    "description": "Overall confidence 0.0-1.0. If you provide the breakdown fields below, this is computed automatically as 0.3*freshness + 0.4*agreement + 0.3*strength.",
                 },
                 "evidence": {
                     "type": "string",
@@ -122,7 +122,19 @@ AGENT_TOOLS = [
                 "sources": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Data sources used for this assessment (e.g., 'FRED', 'Yahoo Finance', 'NewsAPI', 'Reddit', 'SEC EDGAR')",
+                    "description": "Data sources used (e.g., 'FRED', 'Yahoo Finance', 'NewsAPI', 'Reddit', 'SEC EDGAR')",
+                },
+                "data_freshness": {
+                    "type": "number",
+                    "description": "How recent is the data? 1.0 = very fresh (< 1h), 0.5 = moderate (< 24h), 0.0 = stale (> 7d)",
+                },
+                "source_agreement": {
+                    "type": "number",
+                    "description": "Do multiple sources agree on direction? 1.0 = strong consensus, 0.5 = mixed, 0.0 = contradictory",
+                },
+                "signal_strength": {
+                    "type": "number",
+                    "description": "How strong/clear is the signal? 1.0 = very clear, 0.5 = moderate, 0.0 = ambiguous/noisy",
                 },
             },
             "required": ["node_id", "sentiment", "confidence", "evidence"],
@@ -140,6 +152,62 @@ AGENT_TOOLS = [
                 },
             },
             "required": ["node_id"],
+        },
+    },
+    {
+        "name": "get_analysis_context",
+        "description": "Get a comprehensive graph-wide state summary for planning your analysis. Returns: current market regime, anomalous nodes (2σ moves), stale nodes (no data in 24h+), recently updated nodes, and priority-ranked nodes (by centrality × staleness × anomaly). Call this FIRST to decide what to analyze and why.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    {
+        "name": "validate_consistency",
+        "description": "Check for logical contradictions among nodes you've updated. Examines causal edges to find signals that conflict (e.g., bullish SPY + bullish VIX, rising inflation + falling rate expectations). Call this AFTER updating sentiments to self-critique your analysis.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "node_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of node IDs you've updated in this analysis run",
+                },
+            },
+            "required": ["node_ids"],
+        },
+    },
+    {
+        "name": "record_prediction",
+        "description": "Record a falsifiable prediction for a node. These predictions are tracked and later evaluated against actual outcomes to measure your accuracy. Record predictions for your highest-conviction calls.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "The node you're making a prediction about",
+                },
+                "predicted_direction": {
+                    "type": "string",
+                    "description": "Your directional call: 'bullish', 'bearish', or 'neutral'",
+                    "enum": ["bullish", "bearish", "neutral"],
+                },
+                "predicted_sentiment": {
+                    "type": "number",
+                    "description": "Where you expect sentiment to be at the horizon. Range: -1.0 to 1.0",
+                },
+                "reasoning": {
+                    "type": "string",
+                    "description": "Why you're making this prediction — the thesis in 1-2 sentences",
+                },
+                "horizon_hours": {
+                    "type": "integer",
+                    "description": "Time horizon in hours (default 168 = 7 days)",
+                    "default": 168,
+                },
+            },
+            "required": ["node_id", "predicted_direction", "predicted_sentiment", "reasoning"],
         },
     },
 ]

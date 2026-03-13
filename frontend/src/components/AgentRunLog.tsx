@@ -151,6 +151,15 @@ export default function AgentRunLog() {
                                 key={i}
                                 className="text-[10px] bg-gray-900 rounded px-2 py-1 font-mono"
                               >
+                                {tc.phase && (
+                                  <span className={`mr-1.5 px-1 py-px rounded text-[9px] font-sans ${
+                                    tc.phase === "planning" ? "bg-purple-900/60 text-purple-300" :
+                                    tc.phase === "validation" ? "bg-amber-900/60 text-amber-300" :
+                                    "bg-blue-900/60 text-blue-300"
+                                  }`}>
+                                    {tc.phase}
+                                  </span>
+                                )}
                                 <span className="text-blue-400">
                                   {tc.tool}
                                 </span>

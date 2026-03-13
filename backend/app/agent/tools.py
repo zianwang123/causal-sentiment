@@ -16,8 +16,8 @@ from app.data_pipeline.market import MARKET_TICKER_MAP, fetch_market_prices_for_
 from app.data_pipeline.reddit import search_reddit_for_agent
 from app.graph_engine.propagation import propagate_signal
 from app.graph_engine.weights import clamp_sentiment
-from app.models.graph import Node
-from app.models.observations import SentimentObservation
+from app.models.graph import Edge, Node
+from app.models.observations import Prediction, SentimentObservation
 
 logger = logging.getLogger(__name__)
 
@@ -195,9 +195,19 @@ async def update_sentiment_signal(
     session: AsyncSession,
     graph: nx.DiGraph,
     sources: list[str] | None = None,
+    data_freshness: float | None = None,
+    source_agreement: float | None = None,
+    signal_strength: float | None = None,
 ) -> str:
     """Update a node's sentiment and record the observation."""
     sentiment = clamp_sentiment(sentiment)
+
+    # Compute confidence from decomposition if provided, otherwise use raw value
+    if data_freshness is not None and source_agreement is not None and signal_strength is not None:
+        data_freshness = max(0.0, min(1.0, data_freshness))
+        source_agreement = max(0.0, min(1.0, source_agreement))
+        signal_strength = max(0.0, min(1.0, signal_strength))
+        confidence = 0.3 * data_freshness + 0.4 * source_agreement + 0.3 * signal_strength
     confidence = max(0.0, min(1.0, confidence))
 
     # Update node in DB
@@ -208,15 +218,30 @@ async def update_sentiment_signal(
 
     node.composite_sentiment = sentiment
     node.confidence = confidence
-    node.evidence = [{"text": evidence, "timestamp": datetime.now(timezone.utc).isoformat(), "sources": sources or []}]
+    evidence_entry = {"text": evidence, "timestamp": datetime.now(timezone.utc).isoformat(), "sources": sources or []}
+    if data_freshness is not None:
+        evidence_entry["confidence_breakdown"] = {
+            "data_freshness": round(data_freshness, 2),
+            "source_agreement": round(source_agreement, 2),
+            "signal_strength": round(signal_strength, 2),
+        }
+    node.evidence = [evidence_entry]
 
     # Record observation
+    raw_data = {}
+    if data_freshness is not None:
+        raw_data["confidence_breakdown"] = {
+            "data_freshness": round(data_freshness, 2),
+            "source_agreement": round(source_agreement, 2),
+            "signal_strength": round(signal_strength, 2),
+        }
     obs = SentimentObservation(
         node_id=node_id,
         sentiment=sentiment,
         confidence=confidence,
         source="agent",
         evidence=evidence,
+        raw_data=raw_data if raw_data else None,
     )
     session.add(obs)
 
@@ -301,3 +326,211 @@ async def get_graph_neighborhood(node_id: str, session: AsyncSession, graph: nx.
         "node": {"id": node_id, **node_data},
         "neighbors": neighbors,
     }, default=str)
+
+
+async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
+    """Return a graph-wide state summary for the agent's planning phase."""
+    from app.graph_engine.anomalies import detect_anomalies
+    from app.graph_engine.regimes import detect_regime
+
+    # Current regime
+    regime = detect_regime(graph)
+
+    # Anomalies (last 30 days, 2σ)
+    anomalies = await detect_anomalies(session, lookback_days=30, z_threshold=2.0)
+    anomaly_summary = [
+        {"node_id": a.node_id, "z_score": a.z_score, "direction": a.direction}
+        for a in anomalies[:15]
+    ]
+
+    # Data freshness: last observation time per node
+    from datetime import timedelta
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_6h = datetime.utcnow() - timedelta(hours=6)
+
+    result = await session.execute(
+        select(SentimentObservation.node_id, SentimentObservation.created_at, SentimentObservation.source)
+        .order_by(SentimentObservation.created_at.desc())
+    )
+    rows = result.all()
+
+    # Track latest observation per node
+    latest_by_node: dict[str, datetime] = {}
+    for node_id, created_at, source in rows:
+        if node_id not in latest_by_node:
+            latest_by_node[node_id] = created_at
+
+    # Stale nodes (no observation in 24h)
+    all_node_ids = list(graph.nodes)
+    stale_nodes = [
+        nid for nid in all_node_ids
+        if nid not in latest_by_node or latest_by_node[nid] < cutoff_24h
+    ]
+
+    # Recently changed nodes (observation in last 6h)
+    recent_nodes = []
+    for nid in all_node_ids:
+        if nid in latest_by_node and latest_by_node[nid] >= cutoff_6h:
+            sentiment = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
+            recent_nodes.append({"node_id": nid, "sentiment": round(sentiment, 3)})
+
+    # Node priority ranking: centrality × staleness indicator
+    centrality = nx.degree_centrality(graph)
+    priority = []
+    for nid in all_node_ids:
+        c = centrality.get(nid, 0.0)
+        is_stale = 1.0 if nid in stale_nodes else 0.0
+        is_anomalous = 1.0 if any(a.node_id == nid for a in anomalies) else 0.0
+        score = c * 0.4 + is_stale * 0.3 + is_anomalous * 0.3
+        if score > 0.1:
+            priority.append({"node_id": nid, "priority_score": round(score, 3)})
+    priority.sort(key=lambda x: x["priority_score"], reverse=True)
+
+    return json.dumps({
+        "regime": {
+            "state": regime.state.value,
+            "confidence": regime.confidence,
+            "composite_score": regime.composite_score,
+        },
+        "anomalies": anomaly_summary,
+        "stale_nodes": stale_nodes[:20],
+        "recently_updated": recent_nodes[:15],
+        "priority_nodes": priority[:20],
+        "total_nodes": len(all_node_ids),
+        "total_stale": len(stale_nodes),
+    }, default=str)
+
+
+async def validate_consistency(
+    node_ids: list[str],
+    session: AsyncSession,
+    graph: nx.DiGraph,
+) -> str:
+    """Check for logical contradictions among recently-updated nodes."""
+    contradictions = []
+
+    for node_id in node_ids:
+        if node_id not in graph:
+            continue
+
+        node_sentiment = graph.nodes[node_id].get("composite_sentiment", 0.0) or 0.0
+        node_label = graph.nodes[node_id].get("label", node_id)
+
+        # Check outgoing edges
+        for _, target, edge_data in graph.out_edges(node_id, data=True):
+            if target not in node_ids and target not in [n for n, _ in graph.in_edges(node_id)]:
+                continue  # Only check nodes we've analyzed or direct neighbors
+
+            target_sentiment = graph.nodes[target].get("composite_sentiment", 0.0) or 0.0
+            target_label = graph.nodes[target].get("label", target)
+            direction = edge_data.get("direction", "positive")
+            if hasattr(direction, "value"):
+                direction = direction.value
+
+            # Check alignment
+            if direction == "positive":
+                # Same direction expected
+                if node_sentiment * target_sentiment < -0.04:  # Opposite signs, both non-trivial
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{node_label} ({node_sentiment:+.2f}) has POSITIVE edge to {target_label} ({target_sentiment:+.2f}), but they have opposite signs. Expected same direction.",
+                    })
+            elif direction == "negative":
+                # Opposite direction expected
+                if node_sentiment * target_sentiment > 0.04:  # Same signs, both non-trivial
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{node_label} ({node_sentiment:+.2f}) has NEGATIVE edge to {target_label} ({target_sentiment:+.2f}), but they have the same sign. Expected opposite direction.",
+                    })
+
+        # Check incoming edges too
+        for source, _, edge_data in graph.in_edges(node_id, data=True):
+            if source not in node_ids:
+                continue
+
+            source_sentiment = graph.nodes[source].get("composite_sentiment", 0.0) or 0.0
+            source_label = graph.nodes[source].get("label", source)
+            direction = edge_data.get("direction", "positive")
+            if hasattr(direction, "value"):
+                direction = direction.value
+
+            if direction == "positive":
+                if source_sentiment * node_sentiment < -0.04:
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
+                        "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{source_label} ({source_sentiment:+.2f}) has POSITIVE edge to {node_label} ({node_sentiment:+.2f}), but they have opposite signs.",
+                    })
+            elif direction == "negative":
+                if source_sentiment * node_sentiment > 0.04:
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
+                        "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{source_label} ({source_sentiment:+.2f}) has NEGATIVE edge to {node_label} ({node_sentiment:+.2f}), but they have the same sign.",
+                    })
+
+    # Deduplicate by source-target pair
+    seen = set()
+    unique = []
+    for c in contradictions:
+        key = (c["source"]["id"], c["target"]["id"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(c)
+
+    return json.dumps({
+        "contradictions_found": len(unique),
+        "contradictions": unique[:15],
+        "nodes_checked": len(node_ids),
+        "status": "consistent" if not unique else "contradictions_detected",
+    })
+
+
+async def record_prediction(
+    node_id: str,
+    predicted_direction: str,
+    predicted_sentiment: float,
+    reasoning: str,
+    session: AsyncSession,
+    graph: nx.DiGraph,
+    horizon_hours: int = 168,
+) -> str:
+    """Record a falsifiable prediction for future backtesting."""
+    if node_id not in graph:
+        return json.dumps({"error": f"Node '{node_id}' not found"})
+
+    predicted_direction = predicted_direction.lower()
+    if predicted_direction not in ("bullish", "bearish", "neutral"):
+        return json.dumps({"error": "predicted_direction must be 'bullish', 'bearish', or 'neutral'"})
+
+    predicted_sentiment = max(-1.0, min(1.0, predicted_sentiment))
+
+    prediction = Prediction(
+        node_id=node_id,
+        predicted_direction=predicted_direction,
+        predicted_sentiment=predicted_sentiment,
+        horizon_hours=horizon_hours,
+        reasoning=reasoning,
+    )
+    session.add(prediction)
+    await session.flush()
+
+    return json.dumps({
+        "status": "recorded",
+        "prediction_id": prediction.id,
+        "node_id": node_id,
+        "predicted_direction": predicted_direction,
+        "predicted_sentiment": predicted_sentiment,
+        "horizon": f"{horizon_hours}h",
+        "note": "This prediction will be evaluated against actual outcomes for backtesting.",
+    })

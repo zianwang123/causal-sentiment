@@ -1,3 +1,9 @@
+export interface ConfidenceBreakdown {
+  data_freshness: number;
+  source_agreement: number;
+  signal_strength: number;
+}
+
 export interface GraphNode {
   id: string;
   label: string;
@@ -5,7 +11,7 @@ export interface GraphNode {
   description: string;
   composite_sentiment: number;
   confidence: number;
-  evidence: Array<{ text: string; timestamp: string; sources?: string[] }>;
+  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown }>;
   centrality: number;
 }
 
@@ -29,7 +35,7 @@ export interface AgentRun {
   trigger: string;
   status: string;
   nodes_analyzed: string[];
-  tool_calls: Array<{ tool: string; input: Record<string, unknown>; round: number }> | null;
+  tool_calls: Array<{ tool: string; input: Record<string, unknown>; round: number; phase?: string }> | null;
   summary: string | null;
   started_at: string;
   finished_at: string | null;
@@ -45,7 +51,7 @@ export interface ForceGraphNode {
   confidence: number;
   centrality: number;
   description: string;
-  evidence: Array<{ text: string; timestamp: string; sources?: string[] }>;
+  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown }>;
   x?: number;
   y?: number;
   z?: number;

@@ -59,6 +59,22 @@ class EdgeSuggestion(Base):
     reviewed_at = Column(DateTime, nullable=True)
 
 
+class Prediction(Base):
+    __tablename__ = "predictions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_id = Column(String(64), ForeignKey("nodes.id"), nullable=False, index=True)
+    predicted_direction = Column(String(16), nullable=False)  # bullish, bearish, neutral
+    predicted_sentiment = Column(Float, nullable=False)
+    horizon_hours = Column(Integer, default=168)  # default 7 days
+    reasoning = Column(Text, default="")
+    agent_run_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=func.now(), index=True)
+    resolved_at = Column(DateTime, nullable=True)
+    actual_sentiment = Column(Float, nullable=True)
+    hit = Column(Integer, nullable=True)  # 1 = correct direction, 0 = wrong, NULL = unresolved
+
+
 class AgentRun(Base):
     __tablename__ = "agent_runs"
 

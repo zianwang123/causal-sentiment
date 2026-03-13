@@ -99,7 +99,7 @@ export default function FilterBar() {
             </div>
             <div className="text-[10px] text-gray-400 mt-0.5">
               {agentProgress
-                ? `Round ${agentProgress.round}/${agentProgress.maxRounds} · ${agentProgress.totalToolCalls} tool calls`
+                ? `${agentProgress.phase ? agentProgress.phase.charAt(0).toUpperCase() + agentProgress.phase.slice(1) + " · " : ""}Round ${agentProgress.round}/${agentProgress.maxRounds} · ${agentProgress.totalToolCalls} tool calls`
                 : "Starting analysis..."}
             </div>
             <style jsx>{`

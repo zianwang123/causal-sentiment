@@ -42,21 +42,21 @@ This project attempts to capture that interconnectedness in a causal graph and m
 │  │  AI Agent    │  │ Graph Engine  │  │   Data Pipeline     │ │
 │  │             │  │              │  │                     │ │
 │  │ Claude/GPT  │  │ 52 nodes     │  │ APScheduler (6 jobs)│ │
-│  │ tool-use    │  │ 117 edges    │  │ FRED      (4h)     │ │
-│  │ loop (max   │  │ NetworkX     │  │ yfinance  (1h)     │ │
-│  │ 20 rounds)  │  │              │  │ Reddit    (2h)     │ │
-│  │             │  │ Propagation  │  │ Agent     (6h)     │ │
-│  │ 7 tools:    │  │ (BFS + decay)│  │ Weights   (daily)  │ │
-│  │ fetch_fred  │  │              │  │ Decay     (daily)  │ │
-│  │ fetch_market│  │ Anomaly      │  │                     │ │
-│  │ search_news │  │ detection    │  │ Anomaly check after │ │
-│  │ search_reddit│ │ (2σ z-score) │  │ each fetch: 2σ move │ │
-│  │ search_edgar│  │              │  │ → auto-trigger agent│ │
-│  │ update_     │  │ Regime       │  │                     │ │
-│  │  sentiment  │  │ detection    │  └─────────────────────┘ │
-│  │ get_        │  │ (risk-on/off)│                          │
-│  │  neighborhood│ │              │                          │
-│  └──────┬──────┘  │ Dynamic      │                          │
+│  │ 3-phase     │  │ 117 edges    │  │ FRED      (4h)     │ │
+│  │ reasoning:  │  │ NetworkX     │  │ yfinance  (1h)     │ │
+│  │ Plan →      │  │              │  │ Reddit    (2h)     │ │
+│  │ Analyze →   │  │ Propagation  │  │ Agent     (6h)     │ │
+│  │ Validate    │  │ (BFS + decay)│  │ Weights   (daily)  │ │
+│  │ (25 rounds) │  │              │  │ Decay     (daily)  │ │
+│  │             │  │ Anomaly      │  │                     │ │
+│  │ 10 tools    │  │ detection    │  │ Anomaly check after │ │
+│  │ incl.       │  │ (2σ z-score) │  │ each fetch: 2σ move │ │
+│  │ self-       │  │              │  │ → auto-trigger agent│ │
+│  │ critique +  │  │ Regime       │  │                     │ │
+│  │ predictions │  │ detection    │  └─────────────────────┘ │
+│  │             │  │ (risk-on/off)│                          │
+│  └──────┬──────┘  │              │                          │
+│         │         │ Dynamic      │                          │
 │         │         │ weight       │                          │
 │         │         │ learning     │                          │
 │         ▼         │ (Pearson     │                          │
@@ -87,30 +87,39 @@ External Data Sources:
 
 ### How the Agent Works
 
-The AI agent uses a **tool-use loop** — not a simple prompt-response. Here's the flow:
+The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate — not a simple prompt-response. Here's the flow:
 
 1. **Trigger** — The agent is triggered by one of three mechanisms:
    - **Scheduled** (every 6 hours) — analyzes nodes that have received new data since the last run
    - **Anomaly-driven** — when a data fetch detects a 2-sigma move (z-score anomaly detection), the agent is auto-triggered to analyze that specific node and its neighborhood
    - **User-initiated** — "Run Full Analysis" button (all 52 nodes) or per-node "Deep Dive"
 
-2. **Tool-use loop** (max 20 rounds) — The agent receives the node to analyze, then autonomously decides which tools to call:
+2. **Phase 1: Planning** (rounds 1-3) — The agent inspects the graph state before fetching any data:
+   - Calls `get_analysis_context` to see anomalies, stale nodes, current regime, and priority-ranked nodes
+   - Decides which nodes to prioritize and what hypotheses to test
+
+3. **Phase 2: Analysis** (rounds 4-20) — The agent fetches data and updates sentiment using 7 data tools:
    - `fetch_fred_data` — pulls macro data (interest rates, CPI, GDP, unemployment, yield curves)
    - `fetch_market_prices` — pulls ETF/futures/forex prices via yfinance
    - `search_news` — searches recent headlines via NewsAPI
    - `search_reddit` — pulls social sentiment from r/wallstreetbets, r/economics, r/stocks
-   - `search_edgar` — fetches SEC filings and earnings data
+   - `fetch_sec_filings` — fetches SEC filings and earnings data
    - `get_graph_neighborhood` — inspects connected nodes to understand context
-   - `update_sentiment_signal` — writes its final sentiment assessment with confidence score, evidence, and source attribution
+   - `update_sentiment_signal` — writes sentiment with decomposed confidence (data freshness, source agreement, signal strength)
 
-3. **Propagation** — After the agent writes a sentiment update, the signal propagates through the causal graph:
+4. **Phase 3: Validation** (rounds 21-25) — The agent self-critiques its own analysis:
+   - `validate_consistency` — checks for contradictions (e.g., bullish SPY + bullish VIX)
+   - Corrects any contradictions found or documents genuine market dislocations
+   - `record_prediction` — stores 2-3 high-conviction falsifiable predictions for backtesting
+
+5. **Propagation** — After the agent writes a sentiment update, the signal propagates through the causal graph:
    - Weighted BFS outward from the updated node
    - Exponential decay (30% per hop), max 4 hops
    - Edge direction matters (positive/negative/complex causal relationships)
    - Regime-aware: in Risk-Off, bearish signals propagate stronger; in Risk-On, bullish signals propagate stronger
    - Multiple propagation paths are summed (constructive/destructive interference)
 
-4. **WebSocket push** — The updated graph state is broadcast to all connected clients in real-time
+6. **WebSocket push** — The updated graph state is broadcast to all connected clients in real-time, with live progress showing the current phase
 
 ### Key Design Decisions
 
@@ -291,11 +300,11 @@ causal-sentiment/
 │   │   ├── main.py                    # FastAPI app + lifespan + graph seeding
 │   │   ├── config.py                  # Settings (pydantic-settings, env vars)
 │   │   ├── agent/
-│   │   │   ├── orchestrator.py        # LLM tool-use loop (max 20 rounds)
+│   │   │   ├── orchestrator.py        # Three-phase reasoning loop (Plan → Analyze → Validate, 25 rounds)
 │   │   │   ├── llm_client.py          # Unified Claude/GPT client
-│   │   │   ├── tools.py               # 7 tool implementations
+│   │   │   ├── tools.py               # 10 tool implementations (incl. analysis context, consistency check, predictions)
 │   │   │   ├── schemas.py             # Tool definitions (Anthropic + OpenAI format)
-│   │   │   └── prompts.py             # System + analysis prompts
+│   │   │   └── prompts.py             # Phase-aware prompts (planning, analysis, validation)
 │   │   ├── graph_engine/
 │   │   │   ├── topology.py            # 52 nodes + 117 edges (domain knowledge)
 │   │   │   ├── propagation.py         # Weighted BFS signal propagation
@@ -321,7 +330,7 @@ causal-sentiment/
 │   │   │   └── connection.py          # Async SQLAlchemy + asyncpg
 │   │   └── models/
 │   │       ├── graph.py               # Node + Edge SQLAlchemy models
-│   │       └── observations.py        # Sentiment, regime, portfolio models
+│   │       └── observations.py        # Sentiment, regime, portfolio, prediction models
 │   ├── tests/                         # 30 tests (propagation, correlations, anomalies)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -387,13 +396,13 @@ causal-sentiment/
 A: This is experimental. The agent's analysis quality depends on the underlying LLM, the freshness of data sources, and the causal graph structure. The built-in backtesting feature lets you measure prediction accuracy (hit rate, correlation, information coefficient) for each node. Treat it as a research tool, not a trading signal.
 
 **Q: Does this cost money to run?**
-A: The LLM API calls cost money (Anthropic or OpenAI). A full analysis of all 52 nodes typically uses 20-40K tokens. Market data (yfinance) is free. FRED requires a free API key. NewsAPI has a free tier. Reddit API access is free.
+A: The LLM API calls cost money (Anthropic or OpenAI). A full analysis of all 52 nodes typically uses 30-60K tokens (the three-phase loop is more thorough than a single pass). Market data (yfinance) is free. FRED requires a free API key. NewsAPI has a free tier. Reddit API access is free.
 
 **Q: Can I add my own nodes and edges?**
 A: The graph topology is currently defined in `backend/app/graph_engine/topology.py`. You can add nodes and edges there. The LLM topology learning feature can also suggest new edges based on empirical correlation patterns.
 
 **Q: Why not use LangChain / CrewAI / other framework?**
-A: Simplicity and transparency. The agent is a straightforward tool-use loop (~100 lines in `orchestrator.py`). Every tool call is logged and visible in the audit log. No hidden abstractions, no prompt magic.
+A: Simplicity and transparency. The agent is a structured three-phase reasoning loop (~200 lines in `orchestrator.py`). Every tool call is logged with its phase (planning/analysis/validation) and visible in the audit log. No hidden abstractions, no prompt magic.
 
 **Q: Can I use only OpenAI / only Anthropic?**
 A: Yes. You only need one API key. Set `LLM_PROVIDER` in `.env` to your preferred provider. You can switch at runtime via the UI.
@@ -405,11 +414,17 @@ A: Correlation is symmetric and undirected — it tells you two things move toge
 
 ## Roadmap
 
-- [ ] Multi-regime awareness (different propagation models for different market regimes)
-- [ ] More data sources (Bloomberg, alternative data)
+- [x] Three-phase agent reasoning (Plan → Analyze → Validate)
+- [x] Agent self-critique (cross-node consistency checking)
+- [x] Confidence decomposition (data freshness, source agreement, signal strength)
+- [x] Falsifiable prediction tracking (foundation for backtesting feedback loop)
+- [ ] Backtesting feedback loop — show agent its own track record, feed accuracy into prompts
+- [ ] Agent memory — cross-run context accumulation (remember previous analyses and theses)
+- [ ] Multi-agent architecture — specialist agents (macro, market, sentiment) + synthesizer
+- [ ] Hypothesis-driven analysis — agent generates and tests falsifiable hypotheses
+- [ ] More data sources (Bloomberg, options flow, FOMC minutes NLP, earnings call transcripts)
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
-- [ ] Mobile-responsive layout
 - [ ] Alerting (email/Slack when anomalies detected)
 - [ ] Multi-user support with auth
 

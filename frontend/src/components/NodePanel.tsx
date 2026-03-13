@@ -47,10 +47,16 @@ function formatRawData(source: string, data: Record<string, unknown>) {
 }
 
 export default function NodePanel() {
-  const { selectedNode, handleDeepDive, clearSelection } = useNodeSelection();
+  const { selectedNode: rawSelectedNode, handleDeepDive, clearSelection } = useNodeSelection();
   const agentRunning = useGraphStore((s) => s.agentRunning);
+  const nodes = useGraphStore((s) => s.nodes);
   const links = useGraphStore((s) => s.links);
   const anomalies = useGraphStore((s) => s.anomalies);
+
+  // Always use the freshest node data from the store
+  const selectedNode = rawSelectedNode
+    ? nodes.find((n) => n.id === rawSelectedNode.id) ?? rawSelectedNode
+    : null;
 
   const [rawData, setRawData] = useState<RawDataPoint[]>([]);
   const [rawLoading, setRawLoading] = useState(false);
@@ -136,6 +142,26 @@ export default function NodePanel() {
           <div className="text-xl font-mono">
             {(selectedNode.confidence * 100).toFixed(0)}%
           </div>
+          {(() => {
+            const breakdown = selectedNode.evidence?.[0]?.confidence_breakdown;
+            if (!breakdown) return null;
+            return (
+              <div className="mt-1 space-y-0.5">
+                <div className="flex justify-between text-[9px]">
+                  <span className="text-gray-500">Freshness</span>
+                  <span className="text-gray-400">{(breakdown.data_freshness * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex justify-between text-[9px]">
+                  <span className="text-gray-500">Agreement</span>
+                  <span className="text-gray-400">{(breakdown.source_agreement * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex justify-between text-[9px]">
+                  <span className="text-gray-500">Strength</span>
+                  <span className="text-gray-400">{(breakdown.signal_strength * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

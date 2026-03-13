@@ -21,6 +21,7 @@ interface AgentProgress {
   maxRounds: number;
   totalToolCalls: number;
   toolCalls: string[];
+  phase: string | null;
 }
 
 interface GraphStore {
@@ -132,7 +133,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   setSelectedNode: (node) => set({ selectedNode: node }),
 
   triggerAnalysis: async (nodeIds) => {
-    set({ agentRunning: true });
+    set({ agentRunning: true, agentProgress: null });
     try {
       const res = await fetch(`${API_URL}/api/agent/analyze`, {
         method: "POST",
@@ -140,10 +141,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         body: JSON.stringify({ node_ids: nodeIds || null }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const run: AgentRun = await res.json();
-      set({ lastRun: run, agentRunning: false, agentProgress: null });
-      // Refresh graph after analysis
-      get().fetchGraph();
+      // Response returns immediately — analysis runs in background
+      // agentRunning stays true until WebSocket sends completion
     } catch (e) {
       set({ error: (e as Error).message, agentRunning: false, agentProgress: null });
     }
@@ -167,20 +166,27 @@ export function useGraphWebSocket() {
       useGraphStore.setState({ regime: data as RegimeInfo });
     });
     const unsubProgress = wsClient.on("agent_progress", (data) => {
-      const d = data as { round: number; max_rounds: number; tool_calls: string[]; total_tool_calls: number };
+      const d = data as { round: number; max_rounds: number; tool_calls: string[]; total_tool_calls: number; phase?: string };
       useGraphStore.setState({
+        agentRunning: true,
         agentProgress: {
           round: d.round,
           maxRounds: d.max_rounds,
           totalToolCalls: d.total_tool_calls,
           toolCalls: d.tool_calls,
+          phase: d.phase || null,
         },
       });
+    });
+    const unsubComplete = wsClient.on("agent_complete", () => {
+      useGraphStore.setState({ agentRunning: false, agentProgress: null });
+      useGraphStore.getState().fetchGraph();
     });
     return () => {
       unsub();
       unsubRegime();
       unsubProgress();
+      unsubComplete();
     };
   }, [updateFromWs]);
 }
