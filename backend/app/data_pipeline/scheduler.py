@@ -175,7 +175,8 @@ async def _check_anomalies_and_trigger():
 
     try:
         async with async_session() as session:
-            anomalies = await detect_anomalies(session, lookback_days=30, z_threshold=2.0)
+            from app.config import settings as _settings
+            anomalies = await detect_anomalies(session, lookback_days=30, z_threshold=_settings.anomaly_z_threshold)
             if not anomalies:
                 return
 
@@ -312,7 +313,8 @@ async def scheduled_sentiment_decay():
                 if not node.last_updated:
                     continue
                 age_hours = (now - node.last_updated.replace(tzinfo=timezone.utc)).total_seconds() / 3600
-                if age_hours < 6:  # Skip recent updates
+                from app.config import settings as _settings
+                if age_hours < _settings.sentiment_decay_skip_hours:
                     continue
                 decayed = exponential_decay(node.composite_sentiment, age_hours)
                 if abs(decayed) < 0.01:

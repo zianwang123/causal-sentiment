@@ -89,6 +89,7 @@ async def seed_graph_if_empty():
                 "direction": e.direction,
                 "base_weight": e.base_weight,
                 "dynamic_weight": e.dynamic_weight,
+                "transmission_lag_hours": e.transmission_lag_hours,
             }
             for e in all_edges_result.scalars().all()
         ]
@@ -127,8 +128,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(graph_router)

@@ -77,4 +77,6 @@ class Edge(Base):
 
     @property
     def effective_weight(self) -> float:
-        return 0.6 * self.base_weight + 0.4 * self.dynamic_weight
+        from app.config import settings
+        r = settings.edge_weight_base_ratio
+        return r * self.base_weight + (1 - r) * self.dynamic_weight

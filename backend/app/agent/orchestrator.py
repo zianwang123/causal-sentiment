@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -26,9 +27,6 @@ from app.models.observations import AgentRun
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 20
-
-
 async def run_analysis(
     node_ids: list[str],
     session: AsyncSession,
@@ -36,6 +34,25 @@ async def run_analysis(
     trigger: str = "manual",
 ) -> AgentRun:
     """Run the LLM agent to analyze and update sentiment for given nodes."""
+    # Validate API key before creating a "running" AgentRun
+    provider = settings.llm_provider
+    if provider == "openai" and not settings.openai_api_key:
+        agent_run = AgentRun(
+            trigger=trigger, status="error", nodes_analyzed=node_ids,
+            error="OPENAI_API_KEY not configured", finished_at=datetime.utcnow(),
+        )
+        session.add(agent_run)
+        await session.commit()
+        return agent_run
+    elif provider == "anthropic" and not settings.anthropic_api_key:
+        agent_run = AgentRun(
+            trigger=trigger, status="error", nodes_analyzed=node_ids,
+            error="ANTHROPIC_API_KEY not configured", finished_at=datetime.utcnow(),
+        )
+        session.add(agent_run)
+        await session.commit()
+        return agent_run
+
     agent_run = AgentRun(
         trigger=trigger,
         status="running",
@@ -43,21 +60,6 @@ async def run_analysis(
     )
     session.add(agent_run)
     await session.commit()
-
-    # Check that the active provider has an API key
-    provider = settings.llm_provider
-    if provider == "openai" and not settings.openai_api_key:
-        agent_run.status = "error"
-        agent_run.error = "OPENAI_API_KEY not configured"
-        agent_run.finished_at = datetime.utcnow()
-        await session.commit()
-        return agent_run
-    elif provider == "anthropic" and not settings.anthropic_api_key:
-        agent_run.status = "error"
-        agent_run.error = "ANTHROPIC_API_KEY not configured"
-        agent_run.finished_at = datetime.utcnow()
-        await session.commit()
-        return agent_run
 
     # Detect current regime and inject into system prompt
     from app.graph_engine.regimes import detect_regime
@@ -90,7 +92,7 @@ async def run_analysis(
     tool_calls_log: list[dict] = []
 
     try:
-        for round_num in range(MAX_TOOL_ROUNDS):
+        for round_num in range(settings.agent_max_tool_rounds):
             llm_response, messages = await chat_with_tools(
                 system=system_prompt,
                 messages=messages,
@@ -119,6 +121,21 @@ async def run_analysis(
                 results[tc.id] = result
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
+
+            # Broadcast progress via WebSocket
+            try:
+                from app.api.websocket import manager
+                asyncio.create_task(manager.broadcast({
+                    "type": "agent_progress",
+                    "data": {
+                        "round": round_num + 1,
+                        "max_rounds": settings.agent_max_tool_rounds,
+                        "tool_calls": [tc.name for tc in llm_response.tool_calls],
+                        "total_tool_calls": len(tool_calls_log),
+                    },
+                }))
+            except Exception:
+                pass  # Don't let progress broadcast failure break analysis
 
         agent_run.status = "completed"
         agent_run.tool_calls = tool_calls_log
@@ -174,6 +191,7 @@ async def _execute_tool(
             evidence=tool_input["evidence"],
             session=session,
             graph=graph,
+            sources=tool_input.get("sources"),
         )
     elif tool_name == "get_graph_neighborhood":
         return await get_graph_neighborhood(

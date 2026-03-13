@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useGraphStore } from "@/hooks/useGraphData";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL as API } from "@/lib/config";
 
 interface LLMConfig {
   provider: string;
@@ -21,6 +21,7 @@ const REGIME_STYLES: Record<string, { bg: string; text: string; label: string }>
 
 export default function FilterBar() {
   const agentRunning = useGraphStore((s) => s.agentRunning);
+  const agentProgress = useGraphStore((s) => s.agentProgress);
   const triggerAnalysis = useGraphStore((s) => s.triggerAnalysis);
   const lastRun = useGraphStore((s) => s.lastRun);
   const clustered = useGraphStore((s) => s.clustered);
@@ -81,6 +82,35 @@ export default function FilterBar() {
         >
           {agentRunning ? "Agent Running..." : "Run Full Analysis"}
         </button>
+        {agentRunning && (
+          <div className="w-full mt-2">
+            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              {agentProgress ? (
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.max(5, (agentProgress.round / agentProgress.maxRounds) * 100)}%` }}
+                />
+              ) : (
+                <div className="h-full bg-emerald-500 rounded-full" style={{
+                  animation: "progress-indeterminate 1.5s ease-in-out infinite",
+                  width: "40%",
+                }} />
+              )}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {agentProgress
+                ? `Round ${agentProgress.round}/${agentProgress.maxRounds} · ${agentProgress.totalToolCalls} tool calls`
+                : "Starting analysis..."}
+            </div>
+            <style jsx>{`
+              @keyframes progress-indeterminate {
+                0% { margin-left: 0%; }
+                50% { margin-left: 60%; }
+                100% { margin-left: 0%; }
+              }
+            `}</style>
+          </div>
+        )}
         <button
           onClick={toggleClustered}
           className={`w-full mt-2 text-sm py-2 px-3 rounded transition-colors ${

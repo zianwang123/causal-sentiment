@@ -46,13 +46,11 @@ export default function Home() {
       <UserGuide />
       <SentimentTimeline />
 
-      {/* Bottom toolbar: left group, center, right group */}
-      <div className="absolute bottom-4 left-4 z-10 flex items-end gap-2">
+      {/* Bottom toolbar: centered */}
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-2">
         <AgentRunLog />
         <TopologySuggestions />
-      </div>
-      <TimeSlider />
-      <div className="absolute bottom-4 right-4 z-10">
+        <TimeSlider />
         <PortfolioPanel onPortfolioNodes={handlePortfolioNodes} />
       </div>
     </main>

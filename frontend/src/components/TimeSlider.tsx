@@ -25,6 +25,7 @@ export default function TimeSlider() {
   const snapshotTimestamp = useGraphStore((s) => s.snapshotTimestamp);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sliderValueRef = useRef(TOTAL_STEPS);
 
   const now = useRef(new Date());
 
@@ -39,6 +40,7 @@ export default function TimeSlider() {
   const handleSliderChange = useCallback(
     (value: number) => {
       setSliderValue(value);
+      sliderValueRef.current = value;
       // Debounce API calls while dragging
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
@@ -53,21 +55,22 @@ export default function TimeSlider() {
     [fetchSnapshot, clearSnapshot, getTimestamp]
   );
 
-  // Auto-play
+  // Auto-play: advance slider and fetch snapshots on a timer
   useEffect(() => {
     if (playing) {
       intervalRef.current = setInterval(() => {
-        setSliderValue((prev) => {
-          const next = prev + 1;
-          if (next > TOTAL_STEPS) {
-            setPlaying(false);
-            clearSnapshot();
-            return TOTAL_STEPS;
-          }
-          const ts = getTimestamp(next);
-          fetchSnapshot(ts.toISOString());
-          return next;
-        });
+        const prev = sliderValueRef.current;
+        const next = prev + 1;
+        if (next > TOTAL_STEPS) {
+          setPlaying(false);
+          setSliderValue(TOTAL_STEPS);
+          clearSnapshot();
+          return;
+        }
+        setSliderValue(next);
+        sliderValueRef.current = next;
+        const ts = getTimestamp(next);
+        fetchSnapshot(ts.toISOString());
       }, 500);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -81,6 +84,7 @@ export default function TimeSlider() {
     setOpen(false);
     setPlaying(false);
     setSliderValue(TOTAL_STEPS);
+    sliderValueRef.current = TOTAL_STEPS;
     clearSnapshot();
   };
 
@@ -91,7 +95,7 @@ export default function TimeSlider() {
           now.current = new Date();
           setOpen(true);
         }}
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[6] bg-gray-800/90 backdrop-blur border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 hover:text-white transition-colors"
+        className="bg-gray-800/90 backdrop-blur border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-300 hover:text-white transition-colors"
       >
         Time Travel
       </button>
@@ -102,7 +106,7 @@ export default function TimeSlider() {
   const isLive = sliderValue >= TOTAL_STEPS;
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[6] w-[600px] max-w-[90vw] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg px-4 py-3 shadow-xl">
+    <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-[6] w-[600px] max-w-[90vw] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg px-4 py-3 shadow-xl">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <button

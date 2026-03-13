@@ -9,7 +9,8 @@ import { useGraphStore } from "@/hooks/useGraphData";
 const SentimentChart = dynamic(() => import("./SentimentChart"), { ssr: false });
 const BacktestChart = dynamic(() => import("./BacktestChart"), { ssr: false });
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL as API } from "@/lib/config";
+import { parseUTCTimestamp } from "@/lib/dateUtils";
 
 interface RawDataPoint {
   source: string;
@@ -158,7 +159,7 @@ export default function NodePanel() {
                     {SOURCE_LABELS[rd.source] ?? rd.source}
                   </span>
                   <span className="text-[10px] text-gray-500">
-                    {new Date(rd.timestamp).toLocaleDateString()}
+                    {parseUTCTimestamp(rd.timestamp).toLocaleDateString()}
                   </span>
                 </div>
                 <div className="text-gray-400 space-y-px">
@@ -181,8 +182,15 @@ export default function NodePanel() {
             {selectedNode.evidence.map((e, i) => (
               <div key={i} className="text-xs text-gray-300 bg-gray-800 rounded p-2">
                 {e.text}
-                <div className="text-gray-500 mt-0.5">
-                  {new Date(e.timestamp).toLocaleString()}
+                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                  <span className="text-[10px] text-gray-500">
+                    {parseUTCTimestamp(e.timestamp).toLocaleString()}
+                  </span>
+                  {e.sources?.map((src, j) => (
+                    <span key={j} className="text-[9px] bg-blue-900/50 text-blue-300 rounded px-1 py-px">
+                      {src}
+                    </span>
+                  ))}
                 </div>
               </div>
             ))}

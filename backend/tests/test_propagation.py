@@ -93,6 +93,26 @@ def test_nonexistent_source():
     assert len(result.impacts) == 0
 
 
+def test_transmission_lag_increases_decay():
+    """Edge with transmission lag should produce weaker signal than without."""
+    # Without lag
+    nodes = [{"id": "X", "label": "X"}, {"id": "Y", "label": "Y"}]
+    edges_no_lag = [{"source_id": "X", "target_id": "Y", "direction": EdgeDirection.POSITIVE,
+                     "base_weight": 0.8, "dynamic_weight": 0.8, "transmission_lag_hours": 0.0}]
+    g1 = build_networkx_graph(nodes, edges_no_lag)
+    r1 = propagate_signal(g1, "X", 1.0, decay_per_hop=0.3)
+
+    # With 10h lag
+    edges_with_lag = [{"source_id": "X", "target_id": "Y", "direction": EdgeDirection.POSITIVE,
+                       "base_weight": 0.8, "dynamic_weight": 0.8, "transmission_lag_hours": 10.0}]
+    g2 = build_networkx_graph(nodes, edges_with_lag)
+    r2 = propagate_signal(g2, "X", 1.0, decay_per_hop=0.3)
+
+    assert abs(r2.impacts["Y"]) < abs(r1.impacts["Y"])
+    # 10h lag -> lag_factor = 1/(1+1.0) = 0.5, so roughly half the signal
+    assert abs(r2.impacts["Y"] - r1.impacts["Y"] * 0.5) < 0.01
+
+
 def test_mvp_graph_builds():
     from app.graph_engine.topology import MVP_EDGES, MVP_NODES
     g = build_networkx_graph(MVP_NODES, MVP_EDGES)

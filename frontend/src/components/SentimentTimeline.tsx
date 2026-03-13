@@ -12,7 +12,7 @@ export default function SentimentTimeline() {
     .slice(0, 12);
 
   return (
-    <div className="absolute bottom-16 left-4 right-4 z-[5] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg p-3">
+    <div className="absolute bottom-16 left-1/2 -translate-x-1/2 w-[calc(100%-10rem)] max-w-3xl z-[5] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg p-3">
       <h3 className="text-white text-xs font-semibold uppercase mb-2">
         Top Sentiment Signals
       </h3>

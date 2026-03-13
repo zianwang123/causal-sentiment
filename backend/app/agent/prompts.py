@@ -27,6 +27,9 @@ Sentiment scores range from -1.0 (very bearish) to +1.0 (very bullish):
 6. Use get_graph_neighborhood to understand a node's context before updating
 7. Call update_sentiment_signal for each node with your assessment
 
+When calling update_sentiment_signal, include the `sources` list indicating which data sources \
+informed your assessment (e.g., ["FRED", "Yahoo Finance", "NewsAPI", "Reddit", "SEC EDGAR"]).
+
 Be precise, quantitative, and grounded in data. Always cite specific data points in evidence.\
 """
 

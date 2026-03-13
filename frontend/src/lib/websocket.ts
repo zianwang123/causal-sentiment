@@ -1,4 +1,4 @@
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+import { WS_URL } from "./config";
 
 type MessageHandler = (data: unknown) => void;
 

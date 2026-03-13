@@ -10,6 +10,7 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.observations import SentimentObservation
 
 logger = logging.getLogger(__name__)
@@ -29,13 +30,17 @@ class Anomaly:
 async def detect_anomalies(
     session: AsyncSession,
     lookback_days: int = 30,
-    z_threshold: float = 2.0,
+    z_threshold: float | None = None,
 ) -> list[Anomaly]:
     """Detect nodes where the latest observation deviates >z_threshold from recent mean.
 
     Uses raw_data numeric values (FRED series values, market prices) when available,
     falls back to sentiment scores.
     """
+    if z_threshold is None:
+        z_threshold = settings.anomaly_z_threshold
+    min_obs = settings.anomaly_min_observations
+
     # Get all nodes with recent observations
     cutoff = datetime.utcnow() - timedelta(days=lookback_days)
     result = await session.execute(
@@ -53,7 +58,7 @@ async def detect_anomalies(
     anomalies: list[Anomaly] = []
 
     for node_id, obs_list in node_obs.items():
-        if len(obs_list) < 5:  # Need enough data for meaningful statistics
+        if len(obs_list) < min_obs:
             continue
 
         # Extract numeric values — prefer raw_data price/value, fallback to sentiment
@@ -63,7 +68,7 @@ async def detect_anomalies(
             if val is not None:
                 values.append(val)
 
-        if len(values) < 5:
+        if len(values) < min_obs:
             continue
 
         arr = np.array(values)

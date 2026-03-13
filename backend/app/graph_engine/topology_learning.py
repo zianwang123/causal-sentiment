@@ -180,5 +180,8 @@ Only suggest edges where you are confident in the causal mechanism. Quality over
         suggestions.append(suggestion)
 
     await session.commit()
+    # Refresh objects so attributes are accessible after commit (async SQLAlchemy expires on commit)
+    for s in suggestions:
+        await session.refresh(s)
     logger.info("Topology learning created %d edge suggestions", len(suggestions))
     return suggestions

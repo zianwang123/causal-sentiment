@@ -39,6 +39,8 @@ A causal factor graph + agentic sentiment engine for quant finance, inspired by 
 - **Dual LLM support** — switch between Claude and GPT at runtime via the UI
 - **Sentiment history charts** — TradingView Lightweight Charts for each node
 - **Agent audit log** — full visibility into tool calls, reasoning, and summaries
+- **Real-time progress bar** — live round-by-round progress via WebSocket during analysis
+- **Evidence source attribution** — each sentiment assessment tagged with data sources (FRED, Yahoo Finance, NewsAPI, etc.)
 
 ## Tech Stack
 
@@ -200,7 +202,9 @@ causal-sentiment/
 │       │   ├── useGraphData.ts        # Zustand store + WebSocket
 │       │   └── useNodeSelection.ts    # Node click handling
 │       ├── lib/
-│       │   └── graphTransforms.ts     # Color mapping + data transforms
+│       │   ├── graphTransforms.ts     # Color mapping + data transforms
+│       │   ├── dateUtils.ts           # UTC timestamp parsing
+│       │   └── config.ts              # API/WS URL config
 │       └── types/
 │           └── graph.ts               # TypeScript interfaces
 └── docker-compose.yml

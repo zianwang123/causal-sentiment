@@ -141,7 +141,7 @@ class PortfolioSummaryOut(BaseModel):
 @router.get("/summary", response_model=PortfolioSummaryOut)
 async def get_portfolio_summary(session: AsyncSession = Depends(get_session)):
     """Portfolio with current values and P&L."""
-    from app.data_pipeline.market import fetch_market_prices_for_agent
+    from app.data_pipeline.market import fetch_all_market_prices
 
     result = await session.execute(select(PortfolioPosition))
     positions = result.scalars().all()
@@ -154,7 +154,7 @@ async def get_portfolio_summary(session: AsyncSession = Depends(get_session)):
     # Fetch current prices
     tickers = [p.ticker for p in positions]
     try:
-        prices = await fetch_market_prices_for_agent(tickers)
+        prices = await fetch_all_market_prices(tickers)
     except Exception:
         prices = {}
 

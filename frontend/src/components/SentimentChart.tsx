@@ -11,7 +11,8 @@ interface HistoryPoint {
 
 type Range = 7 | 30 | 90;
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL as API } from "@/lib/config";
+import { parseUTCTimestamp } from "@/lib/dateUtils";
 
 export default function SentimentChart({ nodeId }: { nodeId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -90,12 +91,20 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
       });
 
       if (data.length > 0) {
-        const chartData = data.map((d) => ({
-          time: Math.floor(new Date(d.timestamp).getTime() / 1000) as import("lightweight-charts").UTCTimestamp,
-          value: d.sentiment,
-        }));
-        series.setData(chartData);
-        chart.timeScale().fitContent();
+        // Deduplicate and sort by timestamp (lightweight-charts requires strictly increasing times)
+        const byTime = new Map<number, number>();
+        for (const d of data) {
+          const t = Math.floor(parseUTCTimestamp(d.timestamp).getTime() / 1000);
+          // Last value wins for duplicate timestamps
+          byTime.set(t, d.sentiment);
+        }
+        const chartData = Array.from(byTime.entries())
+          .sort((a, b) => a[0] - b[0])
+          .map(([t, v]) => ({ time: t as import("lightweight-charts").UTCTimestamp, value: v }));
+        if (chartData.length > 0) {
+          series.setData(chartData);
+          chart.timeScale().fitContent();
+        }
       }
     });
 
@@ -139,7 +148,7 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
           No history yet — run an analysis first
         </div>
       ) : (
-        <div ref={containerRef} className="rounded overflow-hidden" />
+        <div ref={containerRef} className="rounded overflow-hidden" style={{ minHeight: 160 }} />
       )}
     </div>
   );

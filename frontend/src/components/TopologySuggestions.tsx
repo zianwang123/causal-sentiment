@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useGraphStore } from "@/hooks/useGraphData";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL as API } from "@/lib/config";
 
 interface EdgeSuggestion {
   id: number;
@@ -21,6 +21,7 @@ export default function TopologySuggestions() {
   const [suggestions, setSuggestions] = useState<EdgeSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
   const fetchGraph = useGraphStore((s) => s.fetchGraph);
 
   const fetchSuggestions = useCallback(() => {
@@ -31,20 +32,33 @@ export default function TopologySuggestions() {
   }, []);
 
   useEffect(() => {
-    if (open) fetchSuggestions();
+    if (open) {
+      fetchSuggestions();
+      setMessage(null);
+    }
   }, [open, fetchSuggestions]);
 
   const generateSuggestions = async () => {
     setGenerating(true);
+    setMessage(null);
     try {
       const res = await fetch(`${API}/api/graph/topology/suggest`, {
         method: "POST",
       });
       if (res.ok) {
-        fetchSuggestions();
+        const data = await res.json();
+        if (data.suggestions) {
+          setSuggestions(data.suggestions);
+        }
+        if (data.message) {
+          setMessage(data.message);
+        }
+        if (!data.suggestions?.length && !data.message) {
+          fetchSuggestions();
+        }
       }
     } catch {
-      // ignore
+      setMessage("Failed to connect to backend.");
     } finally {
       setGenerating(false);
     }
@@ -88,7 +102,7 @@ export default function TopologySuggestions() {
       </button>
 
       {open && (
-        <div className="absolute bottom-10 left-0 w-96 max-h-[60vh] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden flex flex-col">
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-96 max-h-[60vh] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden flex flex-col">
           <div className="p-3 border-b border-gray-700">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">
@@ -109,11 +123,16 @@ export default function TopologySuggestions() {
           </div>
 
           <div className="overflow-y-auto flex-1 p-2 space-y-2">
+            {message && (
+              <div className="text-xs text-yellow-400/80 bg-yellow-900/20 border border-yellow-800/30 rounded px-3 py-2 mb-2">
+                {message}
+              </div>
+            )}
             {suggestions.length === 0 ? (
               <div className="text-xs text-gray-500 text-center py-6">
                 {generating
                   ? "Claude is analyzing correlations..."
-                  : "No pending suggestions. Click Generate to find new edges."}
+                  : "No pending suggestions. Run several analyses first to build observation history (need 5+ data points per node), then click Generate."}
               </div>
             ) : (
               suggestions.map((s) => (

@@ -194,6 +194,7 @@ async def update_sentiment_signal(
     evidence: str,
     session: AsyncSession,
     graph: nx.DiGraph,
+    sources: list[str] | None = None,
 ) -> str:
     """Update a node's sentiment and record the observation."""
     sentiment = clamp_sentiment(sentiment)
@@ -207,7 +208,7 @@ async def update_sentiment_signal(
 
     node.composite_sentiment = sentiment
     node.confidence = confidence
-    node.evidence = [{"text": evidence, "timestamp": datetime.now(timezone.utc).isoformat()}]
+    node.evidence = [{"text": evidence, "timestamp": datetime.now(timezone.utc).isoformat(), "sources": sources or []}]
 
     # Record observation
     obs = SentimentObservation(
@@ -234,8 +235,9 @@ async def update_sentiment_signal(
         target_result = await session.execute(select(Node).where(Node.id == target_id))
         target_node = target_result.scalar_one_or_none()
         if target_node:
-            # Blend: 70% existing + 30% propagated (to avoid overwrites)
-            blended = 0.7 * (target_node.composite_sentiment or 0.0) + 0.3 * impact
+            # Blend existing with propagated signal
+            blend = settings.propagation_blend_ratio
+            blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
             target_node.composite_sentiment = clamp_sentiment(blended)
             if target_id in graph:
                 graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment

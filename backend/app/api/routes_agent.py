@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -12,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent.orchestrator import run_analysis
 from app.db.connection import get_session
 from app.models.observations import AgentRun
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
 
@@ -74,8 +78,8 @@ class AgentRunOut(BaseModel):
     nodes_analyzed: list
     tool_calls: list | None = None
     summary: str | None
-    started_at: str
-    finished_at: str | None
+    started_at: datetime
+    finished_at: datetime | None
     error: str | None
 
     model_config = {"from_attributes": True}
@@ -101,7 +105,8 @@ async def trigger_analysis(
     )
 
     # Notify WebSocket clients
-    asyncio.create_task(_notify_graph_update(app_state))
+    task = asyncio.create_task(_notify_graph_update(app_state))
+    task.add_done_callback(_handle_notification_error)
 
     return _run_to_out(agent_run)
 
@@ -123,10 +128,18 @@ def _run_to_out(r: AgentRun) -> AgentRunOut:
         nodes_analyzed=r.nodes_analyzed or [],
         tool_calls=r.tool_calls,
         summary=r.summary,
-        started_at=str(r.started_at),
-        finished_at=str(r.finished_at) if r.finished_at else None,
+        started_at=r.started_at,
+        finished_at=r.finished_at,
         error=r.error,
     )
+
+
+def _handle_notification_error(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        logger.error("WebSocket notification failed: %s", exc)
 
 
 async def _notify_graph_update(app_state):

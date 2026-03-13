@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -341,7 +341,7 @@ async def get_sentiment_history(
     session: AsyncSession = Depends(get_session),
 ):
     """Return sentiment observation history for a node."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.utcnow() - timedelta(days=days)
     result = await session.execute(
         select(SentimentObservation)
         .where(SentimentObservation.node_id == node_id)
@@ -349,6 +349,14 @@ async def get_sentiment_history(
         .order_by(SentimentObservation.created_at.asc())
     )
     observations = result.scalars().all()
+
+    # Deduplicate by second-level timestamp (lightweight-charts requires strictly increasing times)
+    seen_seconds: dict[int, SentimentObservation] = {}
+    for o in observations:
+        ts_key = int(o.created_at.timestamp()) if o.created_at else 0
+        seen_seconds[ts_key] = o  # last one wins (data is asc-ordered)
+
+    deduped = sorted(seen_seconds.values(), key=lambda o: o.created_at)
     return [
         SentimentHistoryPoint(
             timestamp=o.created_at,
@@ -356,7 +364,7 @@ async def get_sentiment_history(
             confidence=o.confidence,
             source=o.source or "",
         )
-        for o in observations
+        for o in deduped
     ]
 
 
@@ -406,14 +414,30 @@ class EdgeSuggestionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("/topology/suggest", response_model=list[EdgeSuggestionOut])
+class TopologySuggestResponse(BaseModel):
+    suggestions: list[EdgeSuggestionOut]
+    message: str | None = None
+
+
+@router.post("/topology/suggest", response_model=TopologySuggestResponse)
 async def suggest_topology(session: AsyncSession = Depends(get_session)):
     """Trigger LLM-assisted topology learning to suggest new edges."""
-    from app.graph_engine.topology_learning import suggest_edges_with_llm
+    from app.graph_engine.topology_learning import find_correlated_unconnected_pairs, suggest_edges_with_llm
     from app.main import app_state
 
+    # Pre-check: are there enough candidates?
+    candidates = await find_correlated_unconnected_pairs(session, app_state.graph)
+    if not candidates:
+        return TopologySuggestResponse(
+            suggestions=[],
+            message="Not enough sentiment data to find correlated node pairs. Run some analyses first to build up observation history.",
+        )
+
     suggestions = await suggest_edges_with_llm(session, app_state.graph)
-    return [EdgeSuggestionOut.model_validate(s) for s in suggestions]
+    return TopologySuggestResponse(
+        suggestions=[EdgeSuggestionOut.model_validate(s) for s in suggestions],
+        message=f"Generated {len(suggestions)} suggestion(s)." if suggestions else "LLM found no plausible causal links among the correlated pairs.",
+    )
 
 
 @router.get("/topology/suggestions", response_model=list[EdgeSuggestionOut])

@@ -9,7 +9,8 @@ import numpy as np
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.graph import Edge
+from app.config import settings
+from app.models.graph import Edge, EdgeDirection
 from app.models.observations import SentimentObservation
 
 logger = logging.getLogger(__name__)
@@ -34,13 +35,16 @@ async def _get_node_timeseries(
 def _align_timeseries(
     ts_a: list[tuple[datetime, float]],
     ts_b: list[tuple[datetime, float]],
-    bucket_hours: int = 6,
+    bucket_hours: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Align two irregular time series into matching buckets.
 
     Groups observations into time buckets and takes the mean within each bucket.
     Returns only buckets where both series have data.
     """
+    if bucket_hours is None:
+        bucket_hours = settings.correlation_bucket_hours
+
     if not ts_a or not ts_b:
         return np.array([]), np.array([])
 
@@ -55,8 +59,9 @@ def _align_timeseries(
     buckets_a = to_buckets(ts_a)
     buckets_b = to_buckets(ts_b)
 
+    min_data_points = settings.correlation_min_data_points
     common_keys = sorted(set(buckets_a.keys()) & set(buckets_b.keys()))
-    if len(common_keys) < 5:  # Need at least 5 data points for meaningful correlation
+    if len(common_keys) < min_data_points:
         return np.array([]), np.array([])
 
     vals_a = np.array([np.mean(buckets_a[k]) for k in common_keys])
@@ -67,7 +72,7 @@ def _align_timeseries(
 
 def _pearson_correlation(a: np.ndarray, b: np.ndarray) -> float | None:
     """Compute Pearson correlation, returning None if insufficient data."""
-    if len(a) < 5:
+    if len(a) < settings.correlation_min_data_points:
         return None
     std_a, std_b = np.std(a), np.std(b)
     if std_a < 1e-10 or std_b < 1e-10:
@@ -115,12 +120,22 @@ async def compute_pairwise_correlations(
 async def update_dynamic_weights(
     session: AsyncSession,
     graph,  # nx.DiGraph — avoid import for typing
-    lookback_days: int = 90,
+    lookback_days: int | None = None,
+    direction_flip_threshold: float | None = None,
 ) -> int:
     """Update dynamic_weight on edges from empirical correlations.
 
+    When the sign of the empirical correlation strongly disagrees with the
+    edge's declared direction, the direction is flipped (POSITIVE ↔ NEGATIVE).
+    COMPLEX edges are never flipped.
+
     Returns the number of edges updated.
     """
+    if lookback_days is None:
+        lookback_days = settings.correlation_lookback_days
+    if direction_flip_threshold is None:
+        direction_flip_threshold = settings.correlation_direction_flip_threshold
+
     correlations = await compute_pairwise_correlations(session, lookback_days)
 
     if not correlations:
@@ -130,33 +145,63 @@ async def update_dynamic_weights(
     edges_result = await session.execute(select(Edge))
     edges = edges_result.scalars().all()
 
+    base_ratio = settings.edge_weight_base_ratio
     updated = 0
+    flipped = 0
     for edge in edges:
         corr = correlations.get((edge.source_id, edge.target_id))
         if corr is None:
             continue
 
-        # Convert correlation to weight: use absolute value, clamped to [0.0, 1.0]
+        # Dynamic weight is correlation magnitude, clamped to [0.0, 1.0]
         new_dynamic_weight = min(1.0, max(0.0, abs(corr)))
 
+        # Check if correlation sign disagrees with edge direction
+        new_direction = edge.direction
+        if edge.direction != EdgeDirection.COMPLEX:
+            expected_positive = edge.direction == EdgeDirection.POSITIVE
+            if expected_positive and corr < -direction_flip_threshold:
+                new_direction = EdgeDirection.NEGATIVE
+                flipped += 1
+                logger.warning(
+                    "Direction flip: %s → %s (was POSITIVE, corr=%.3f)",
+                    edge.source_id, edge.target_id, corr,
+                )
+            elif not expected_positive and corr > direction_flip_threshold:
+                new_direction = EdgeDirection.POSITIVE
+                flipped += 1
+                logger.warning(
+                    "Direction flip: %s → %s (was NEGATIVE, corr=%.3f)",
+                    edge.source_id, edge.target_id, corr,
+                )
+
         # Only update if meaningfully different (avoid unnecessary DB writes)
-        if abs(new_dynamic_weight - edge.dynamic_weight) < 0.01:
+        weight_changed = abs(new_dynamic_weight - edge.dynamic_weight) >= 0.01
+        direction_changed = new_direction != edge.direction
+
+        if not weight_changed and not direction_changed:
             continue
 
         edge.dynamic_weight = new_dynamic_weight
+        if direction_changed:
+            edge.direction = new_direction
         updated += 1
 
         # Update in-memory graph edge
         if graph.has_edge(edge.source_id, edge.target_id):
-            graph[edge.source_id][edge.target_id]["dynamic_weight"] = new_dynamic_weight
-            graph[edge.source_id][edge.target_id]["effective_weight"] = (
-                0.6 * edge.base_weight + 0.4 * new_dynamic_weight
+            edge_data = graph[edge.source_id][edge.target_id]
+            edge_data["dynamic_weight"] = new_dynamic_weight
+            edge_data["effective_weight"] = (
+                base_ratio * edge.base_weight + (1 - base_ratio) * new_dynamic_weight
             )
+            if direction_changed:
+                edge_data["direction"] = new_direction
 
     await session.commit()
     logger.info(
-        "Dynamic weights updated: %d edges (from %d correlations)",
+        "Dynamic weights updated: %d edges (%d direction flips) from %d correlations",
         updated,
+        flipped,
         len(correlations),
     )
     return updated

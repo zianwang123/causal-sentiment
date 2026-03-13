@@ -119,6 +119,11 @@ AGENT_TOOLS = [
                     "type": "string",
                     "description": "Brief summary of the evidence supporting this sentiment assessment",
                 },
+                "sources": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Data sources used for this assessment (e.g., 'FRED', 'Yahoo Finance', 'NewsAPI', 'Reddit', 'SEC EDGAR')",
+                },
             },
             "required": ["node_id", "sentiment", "confidence", "evidence"],
         },

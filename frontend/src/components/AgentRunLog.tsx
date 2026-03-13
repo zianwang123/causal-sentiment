@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useGraphStore } from "@/hooks/useGraphData";
 import type { AgentRun } from "@/types/graph";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { API_URL as API } from "@/lib/config";
+import { parseUTCTimestamp } from "@/lib/dateUtils";
 
 const STATUS_COLORS: Record<string, string> = {
   completed: "bg-green-600",
@@ -39,8 +40,8 @@ export default function AgentRunLog() {
 
   const formatDuration = (run: AgentRun) => {
     if (!run.finished_at) return "running...";
-    const start = new Date(run.started_at).getTime();
-    const end = new Date(run.finished_at).getTime();
+    const start = parseUTCTimestamp(run.started_at).getTime();
+    const end = parseUTCTimestamp(run.finished_at).getTime();
     const secs = Math.round((end - start) / 1000);
     return secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
   };
@@ -60,7 +61,7 @@ export default function AgentRunLog() {
       </button>
 
       {open && (
-        <div className="absolute bottom-10 left-0 w-96 max-h-[60vh] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden flex flex-col">
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-96 max-h-[60vh] bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg shadow-xl z-10 overflow-hidden flex flex-col">
           <div className="p-3 border-b border-gray-700 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-white">Agent Runs</h3>
             <button
@@ -91,7 +92,7 @@ export default function AgentRunLog() {
                     />
                     <span className="text-xs text-gray-300 flex-1">
                       {run.trigger === "scheduled" ? "Scheduled" : "Manual"} ·{" "}
-                      {new Date(run.started_at).toLocaleString(undefined, {
+                      {parseUTCTimestamp(run.started_at).toLocaleString(undefined, {
                         month: "short",
                         day: "numeric",
                         hour: "2-digit",

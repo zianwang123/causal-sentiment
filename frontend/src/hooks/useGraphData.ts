@@ -14,13 +14,21 @@ import type {
 import { transformGraphData } from "@/lib/graphTransforms";
 import { wsClient } from "@/lib/websocket";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_URL } from "@/lib/config";
+
+interface AgentProgress {
+  round: number;
+  maxRounds: number;
+  totalToolCalls: number;
+  toolCalls: string[];
+}
 
 interface GraphStore {
   nodes: ForceGraphNode[];
   links: ForceGraphLink[];
   selectedNode: ForceGraphNode | null;
   agentRunning: boolean;
+  agentProgress: AgentProgress | null;
   lastRun: AgentRun | null;
   anomalies: AnomalyInfo[];
   regime: RegimeInfo | null;
@@ -45,6 +53,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   links: [],
   selectedNode: null,
   agentRunning: false,
+  agentProgress: null,
   lastRun: null,
   anomalies: [],
   regime: null,
@@ -67,8 +76,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 
   clearSnapshot: () => {
     set({ snapshotTimestamp: null });
-    // Re-fetch live data
-    useGraphStore.getState().fetchGraph();
+    // Re-fetch live data on next microtask to avoid setState-during-render
+    queueMicrotask(() => {
+      useGraphStore.getState().fetchGraph();
+    });
   },
 
   toggleClustered: () => {
@@ -122,11 +133,11 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const run: AgentRun = await res.json();
-      set({ lastRun: run, agentRunning: false });
+      set({ lastRun: run, agentRunning: false, agentProgress: null });
       // Refresh graph after analysis
       get().fetchGraph();
     } catch (e) {
-      set({ error: (e as Error).message, agentRunning: false });
+      set({ error: (e as Error).message, agentRunning: false, agentProgress: null });
     }
   },
 
@@ -147,9 +158,21 @@ export function useGraphWebSocket() {
     const unsubRegime = wsClient.on("regime_update", (data) => {
       useGraphStore.setState({ regime: data as RegimeInfo });
     });
+    const unsubProgress = wsClient.on("agent_progress", (data) => {
+      const d = data as { round: number; max_rounds: number; tool_calls: string[]; total_tool_calls: number };
+      useGraphStore.setState({
+        agentProgress: {
+          round: d.round,
+          maxRounds: d.max_rounds,
+          totalToolCalls: d.total_tool_calls,
+          toolCalls: d.tool_calls,
+        },
+      });
+    });
     return () => {
       unsub();
       unsubRegime();
+      unsubProgress();
     };
   }, [updateFromWs]);
 }
