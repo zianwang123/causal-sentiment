@@ -284,7 +284,7 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
 |--------|-----|
 | **Simulate a shock** | Click a node → drag the "What-If Shock" slider → click "Simulate" → watch the cascade |
 | **Add a note** | Click a node → scroll to "Analyst Notes" → type your reasoning → click "Add" |
-| **Read regime narrative** | Click the regime badge (top-left) → click "Generate Narrative" |
+| **Read regime narrative** | Click the regime badge (top-left, e.g. "TRANSITIONING") → it expands → click "Generate Narrative" (requires API key in `.env`) |
 | **Run analysis** | Click "Run Full Analysis" in the top-left panel (all 52 nodes) |
 | **Deep dive** | Click a node → click "Deep Dive" for focused single-node analysis |
 | **Find a node** | Open "Nodes" in the bottom toolbar — search, sort, click to fly to it |
