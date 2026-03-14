@@ -534,3 +534,88 @@ async def record_prediction(
         "horizon": f"{horizon_hours}h",
         "note": "This prediction will be evaluated against actual outcomes for backtesting.",
     })
+
+
+async def get_agent_track_record(
+    session: AsyncSession,
+    graph: nx.DiGraph,
+    node_id: str | None = None,
+) -> str:
+    """Get the agent's prediction track record — hit rate, accuracy, recent results."""
+    from sqlalchemy import func as sa_func
+
+    query = select(Prediction).where(Prediction.resolved_at.isnot(None))
+    if node_id:
+        query = query.where(Prediction.node_id == node_id)
+
+    result = await session.execute(query.order_by(Prediction.resolved_at.desc()))
+    resolved = result.scalars().all()
+
+    # Also get pending count
+    pending_query = select(sa_func.count()).select_from(Prediction).where(Prediction.resolved_at.is_(None))
+    if node_id:
+        pending_query = pending_query.where(Prediction.node_id == node_id)
+    pending_count = (await session.execute(pending_query)).scalar() or 0
+
+    if not resolved:
+        return json.dumps({
+            "total_resolved": 0,
+            "pending": pending_count,
+            "message": "No resolved predictions yet. Track record will build as predictions expire.",
+        })
+
+    # Aggregate stats
+    total = len(resolved)
+    hits = sum(1 for p in resolved if p.hit == 1)
+    misses = sum(1 for p in resolved if p.hit == 0)
+    inconclusive = sum(1 for p in resolved if p.hit is None)
+    hit_rate = hits / (hits + misses) if (hits + misses) > 0 else None
+
+    # Per-direction breakdown
+    by_direction: dict[str, dict] = {}
+    for p in resolved:
+        d = p.predicted_direction
+        if d not in by_direction:
+            by_direction[d] = {"total": 0, "hits": 0, "misses": 0}
+        by_direction[d]["total"] += 1
+        if p.hit == 1:
+            by_direction[d]["hits"] += 1
+        elif p.hit == 0:
+            by_direction[d]["misses"] += 1
+
+    for d_stats in by_direction.values():
+        denom = d_stats["hits"] + d_stats["misses"]
+        d_stats["hit_rate"] = round(d_stats["hits"] / denom, 3) if denom > 0 else None
+
+    # Avg sentiment error
+    errors = [
+        abs(p.predicted_sentiment - p.actual_sentiment)
+        for p in resolved
+        if p.actual_sentiment is not None
+    ]
+    avg_error = round(sum(errors) / len(errors), 4) if errors else None
+
+    # Last 5 resolved with details
+    recent = []
+    for p in resolved[:5]:
+        hit_symbol = "?" if p.hit is None else ("correct" if p.hit == 1 else "wrong")
+        recent.append({
+            "node_id": p.node_id,
+            "predicted": f"{p.predicted_direction} ({p.predicted_sentiment:+.2f})",
+            "actual_sentiment": round(p.actual_sentiment, 3) if p.actual_sentiment is not None else None,
+            "result": hit_symbol,
+            "reasoning": p.reasoning[:120] if p.reasoning else "",
+            "created": p.created_at.isoformat(),
+        })
+
+    return json.dumps({
+        "total_resolved": total,
+        "pending": pending_count,
+        "hits": hits,
+        "misses": misses,
+        "inconclusive": inconclusive,
+        "hit_rate": round(hit_rate, 3) if hit_rate is not None else None,
+        "avg_sentiment_error": avg_error,
+        "by_direction": by_direction,
+        "recent_predictions": recent,
+    })

@@ -6,7 +6,7 @@ A causal factor graph + agentic sentiment engine for quant finance, drawing from
 
 > **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
 
-![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED)
+![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/yourusername/causal-sentiment/actions/workflows/ci.yml/badge.svg)
 
 ---
 
@@ -49,7 +49,7 @@ This project attempts to capture that interconnectedness in a causal graph and m
 │  │ Validate    │  │ (BFS + decay)│  │ Weights   (daily)  │ │
 │  │ (25 rounds) │  │              │  │ Decay     (daily)  │ │
 │  │             │  │ Anomaly      │  │                     │ │
-│  │ 10 tools    │  │ detection    │  │ Anomaly check after │ │
+│  │ 11 tools    │  │ detection    │  │ Anomaly check after │ │
 │  │ incl.       │  │ (2σ z-score) │  │ each fetch: 2σ move │ │
 │  │ self-       │  │              │  │ → auto-trigger agent│ │
 │  │ critique +  │  │ Regime       │  │                     │ │
@@ -111,6 +111,7 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
    - `validate_consistency` — checks for contradictions (e.g., bullish SPY + bullish VIX)
    - Corrects any contradictions found or documents genuine market dislocations
    - `record_prediction` — stores 2-3 high-conviction falsifiable predictions for backtesting
+   - `get_agent_track_record` — reviews past prediction accuracy for self-calibration
 
 5. **Propagation** — After the agent writes a sentiment update, the signal propagates through the causal graph:
    - Weighted BFS outward from the updated node
@@ -156,6 +157,7 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
 - **Sentiment history charts** — TradingView Lightweight Charts with 7d/30d/90d range buttons
 - **Agent audit log** — expandable cards showing status, duration, tool calls, analyzed nodes
 - **Real-time progress bar** — live round-by-round progress via WebSocket during analysis
+- **Predictions panel** — color-coded prediction tracker (green=hit, red=miss, yellow=pending) with hit rate summary and countdown timers
 - **Evidence source attribution** — each sentiment assessment tagged with data sources (FRED, Yahoo Finance, NewsAPI, Reddit, SEC EDGAR)
 - **Portfolio overlay** — add your positions, see them highlighted on the graph
 
@@ -218,6 +220,9 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
    # Choose default provider: "anthropic" or "openai"
    LLM_PROVIDER=openai
 
+   # Scheduler (disabled by default to save API credits)
+   SCHEDULER_ENABLED=false
+
    # Optional data sources (mock data used if missing)
    FRED_API_KEY=
    NEWSAPI_KEY=
@@ -248,6 +253,7 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
 | **Portfolio** | Open "Portfolio" in the bottom toolbar to add positions |
 | **Topology suggestions** | Open "Evolve Graph" to see AI-suggested new causal edges |
 | **Agent audit** | Open "Agent Log" to inspect past runs and tool calls |
+| **Predictions** | Open "Predictions" to see pending/resolved predictions with hit rate |
 
 ---
 
@@ -302,7 +308,7 @@ causal-sentiment/
 │   │   ├── agent/
 │   │   │   ├── orchestrator.py        # Three-phase reasoning loop (Plan → Analyze → Validate, 25 rounds)
 │   │   │   ├── llm_client.py          # Unified Claude/GPT client
-│   │   │   ├── tools.py               # 10 tool implementations (incl. analysis context, consistency check, predictions)
+│   │   │   ├── tools.py               # 11 tool implementations (incl. track record, consistency check, predictions)
 │   │   │   ├── schemas.py             # Tool definitions (Anthropic + OpenAI format)
 │   │   │   └── prompts.py             # Phase-aware prompts (planning, analysis, validation)
 │   │   ├── graph_engine/
@@ -313,6 +319,7 @@ causal-sentiment/
 │   │   │   ├── anomalies.py           # Z-score anomaly detection
 │   │   │   ├── regimes.py             # Market regime classification
 │   │   │   ├── backtest.py            # Prediction accuracy metrics
+│   │   │   ├── predictions.py        # Prediction resolution (compare predicted vs actual)
 │   │   │   └── topology_learning.py   # LLM-suggested edges from correlations
 │   │   ├── data_pipeline/
 │   │   │   ├── fred.py                # FRED API client (14 macro series)
@@ -320,7 +327,7 @@ causal-sentiment/
 │   │   │   ├── news.py                # NewsAPI client
 │   │   │   ├── reddit.py              # Reddit via asyncpraw (3 subreddits)
 │   │   │   ├── edgar.py               # SEC EDGAR client
-│   │   │   └── scheduler.py           # APScheduler (6 background jobs)
+│   │   │   └── scheduler.py           # APScheduler (7 jobs, disabled by default)
 │   │   ├── api/
 │   │   │   ├── routes_graph.py        # Graph CRUD + snapshot + anomalies + clusters
 │   │   │   ├── routes_agent.py        # Agent trigger + LLM config
@@ -346,6 +353,7 @@ causal-sentiment/
 │       │   ├── SentimentTimeline.tsx  # Top movers bar
 │       │   ├── TimeSlider.tsx         # Historical playback (7d, 1h steps)
 │       │   ├── AgentRunLog.tsx        # Agent audit log
+│       │   ├── PredictionsPanel.tsx   # Prediction tracker (hit/miss/pending)
 │       │   ├── NodeLocator.tsx        # Searchable node directory + camera focus
 │       │   ├── PortfolioPanel.tsx     # Portfolio overlay
 │       │   ├── TopologySuggestions.tsx # LLM edge suggestions
@@ -360,6 +368,7 @@ causal-sentiment/
 │       │   └── config.ts              # API/WS URL config
 │       └── types/
 │           └── graph.ts               # TypeScript interfaces
+├── .github/workflows/ci.yml           # CI: backend tests + frontend typecheck
 ├── docker-compose.yml                 # PostgreSQL + TimescaleDB + Redis + Backend
 └── .env.example                       # Environment variable template
 ```
@@ -382,6 +391,8 @@ causal-sentiment/
 | POST | `/api/graph/topology/suggest` | LLM-suggested new causal edges |
 | POST | `/api/agent/analyze` | Trigger agent analysis (`{"node_ids": [...]}` or all) |
 | GET | `/api/agent/runs?limit=20` | Recent agent runs with tool call logs |
+| GET | `/api/agent/predictions?limit=20&status=pending` | List predictions (pending/resolved) |
+| GET | `/api/agent/predictions/summary` | Prediction stats: hit rate, by-direction breakdown |
 | GET | `/api/agent/llm-config` | Current LLM provider and model |
 | POST | `/api/agent/llm-config` | Switch LLM provider |
 | POST | `/api/portfolio/positions` | Add portfolio positions |
@@ -396,7 +407,7 @@ causal-sentiment/
 A: This is experimental. The agent's analysis quality depends on the underlying LLM, the freshness of data sources, and the causal graph structure. The built-in backtesting feature lets you measure prediction accuracy (hit rate, correlation, information coefficient) for each node. Treat it as a research tool, not a trading signal.
 
 **Q: Does this cost money to run?**
-A: The LLM API calls cost money (Anthropic or OpenAI). A full analysis of all 52 nodes typically uses 30-60K tokens (the three-phase loop is more thorough than a single pass). Market data (yfinance) is free. FRED requires a free API key. NewsAPI has a free tier. Reddit API access is free.
+A: The LLM API calls cost money (Anthropic or OpenAI). A full analysis of all 52 nodes typically uses 30-60K tokens (the three-phase loop is more thorough than a single pass). Market data (yfinance) is free. FRED requires a free API key. NewsAPI has a free tier. Reddit API access is free. Background scheduled jobs are **disabled by default** (`SCHEDULER_ENABLED=false`) to prevent unexpected API costs.
 
 **Q: Can I add my own nodes and edges?**
 A: The graph topology is currently defined in `backend/app/graph_engine/topology.py`. You can add nodes and edges there. The LLM topology learning feature can also suggest new edges based on empirical correlation patterns.
@@ -418,8 +429,11 @@ A: Correlation is symmetric and undirected — it tells you two things move toge
 - [x] Agent self-critique (cross-node consistency checking)
 - [x] Confidence decomposition (data freshness, source agreement, signal strength)
 - [x] Falsifiable prediction tracking (foundation for backtesting feedback loop)
-- [ ] Backtesting feedback loop — show agent its own track record, feed accuracy into prompts
-- [ ] Agent memory — cross-run context accumulation (remember previous analyses and theses)
+- [x] Prediction resolution — automatic comparison of predicted vs actual outcomes
+- [x] Agent track record — self-calibration from past prediction accuracy
+- [x] Agent memory — cross-run context (previous analyses + track record injected into prompts)
+- [x] Scheduler toggle — all background jobs disabled by default (`SCHEDULER_ENABLED=false`)
+- [x] CI/CD pipeline — GitHub Actions (pytest + TypeScript typecheck)
 - [ ] Multi-agent architecture — specialist agents (macro, market, sentiment) + synthesizer
 - [ ] Hypothesis-driven analysis — agent generates and tests falsifiable hypotheses
 - [ ] More data sources (Bloomberg, options flow, FOMC minutes NLP, earnings call transcripts)

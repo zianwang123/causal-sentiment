@@ -45,6 +45,13 @@ Sentiment scores range from -1.0 (very bearish) to +1.0 (very bullish):
 - **+0.2 to +0.6**: Moderately bullish
 - **+0.6 to +1.0**: Strong bullish signal (e.g., robust expansion, easing cycle)
 
+### Self-Calibration
+- Your previous analyses and prediction track record are injected into this prompt
+- If your hit rate on a particular node or direction is low, be more conservative in confidence
+- If your previous thesis still holds and no new data contradicts it, maintain your position with updated data_freshness
+- Reference your previous analysis when relevant: "maintaining bullish thesis from 6h ago because..."
+- Call `get_agent_track_record` during planning to see detailed accuracy stats
+
 Be precise, quantitative, and grounded in data. Always cite specific data points in evidence.\
 """
 
@@ -54,10 +61,12 @@ You are beginning a new analysis cycle. The following nodes have been requested 
 **Requested nodes:** {node_ids}
 
 Start by calling `get_analysis_context` to see the current graph state — anomalies, stale nodes, \
-regime, and priority ranking. Then outline your analysis plan:
+regime, and priority ranking. Also call `get_agent_track_record` to review your prediction accuracy. \
+Then outline your analysis plan:
 1. Which nodes will you prioritize and why?
 2. What data will you fetch first?
 3. What hypotheses or cross-asset relationships will you test?
+4. Based on your track record, where should you be more/less confident?
 
 After planning, you'll move to the analysis phase where you fetch data and update sentiments.\
 """

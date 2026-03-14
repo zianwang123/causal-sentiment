@@ -210,4 +210,18 @@ AGENT_TOOLS = [
             "required": ["node_id", "predicted_direction", "predicted_sentiment", "reasoning"],
         },
     },
+    {
+        "name": "get_agent_track_record",
+        "description": "Get the agent's prediction track record — hit rate, accuracy, and recent resolved predictions. Use during planning to calibrate your confidence levels based on past accuracy. Shows per-direction breakdown and recent prediction outcomes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "node_id": {
+                    "type": "string",
+                    "description": "Optional: filter track record to a specific node",
+                },
+            },
+            "required": [],
+        },
+    },
 ]

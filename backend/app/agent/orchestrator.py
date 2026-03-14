@@ -22,6 +22,7 @@ from app.agent.tools import (
     fetch_fred_data,
     fetch_market_prices,
     fetch_sec_filings,
+    get_agent_track_record,
     get_analysis_context,
     get_graph_neighborhood,
     record_prediction,
@@ -98,6 +99,11 @@ async def run_analysis(
         f"{'In risk-on regimes, bullish momentum tends to persist — look for confirmation signals.' if regime.state.value == 'risk_on' else ''}"
     )
     system_prompt = SYSTEM_PROMPT + regime_context
+
+    # ── AGENT MEMORY: previous runs + track record ────────────────
+    memory_context = await _build_memory_context(session)
+    if memory_context:
+        system_prompt += memory_context
 
     # Check for portfolio positions to give agent context
     from sqlalchemy import select as sa_select
@@ -305,6 +311,12 @@ async def _execute_tool(
             session=session,
             graph=graph,
         )
+    elif tool_name == "get_agent_track_record":
+        return await get_agent_track_record(
+            session=session,
+            graph=graph,
+            node_id=tool_input.get("node_id"),
+        )
     elif tool_name == "record_prediction":
         return await record_prediction(
             node_id=tool_input["node_id"],
@@ -317,3 +329,70 @@ async def _execute_tool(
         )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+
+async def _build_memory_context(session: AsyncSession) -> str:
+    """Build memory context from previous runs and prediction track record."""
+    from sqlalchemy import select as sa_select, func as sa_func
+    from app.models.observations import Prediction
+    from datetime import timedelta
+
+    parts: list[str] = []
+
+    # Previous run summaries (last 3 completed runs)
+    try:
+        result = await session.execute(
+            sa_select(AgentRun)
+            .where(AgentRun.status == "completed")
+            .where(AgentRun.summary.isnot(None))
+            .order_by(AgentRun.finished_at.desc())
+            .limit(3)
+        )
+        prev_runs = result.scalars().all()
+        if prev_runs:
+            lines = []
+            now = datetime.utcnow()
+            for run in prev_runs:
+                ago = now - run.finished_at if run.finished_at else timedelta(0)
+                hours_ago = int(ago.total_seconds() / 3600)
+                node_count = len(run.nodes_analyzed) if run.nodes_analyzed else 0
+                # Truncate summary to keep prompt manageable
+                summary = (run.summary or "")[:300]
+                if hours_ago < 1:
+                    time_label = "< 1 hour ago"
+                elif hours_ago < 24:
+                    time_label = f"{hours_ago}h ago"
+                else:
+                    time_label = f"{hours_ago // 24}d ago"
+                lines.append(f"- **{time_label}** ({node_count} nodes, {run.trigger}): {summary}")
+            parts.append("\n\n## Previous Analyses\n" + "\n".join(lines))
+    except Exception:
+        pass
+
+    # Prediction track record summary
+    try:
+        result = await session.execute(
+            sa_select(Prediction).where(Prediction.hit.isnot(None)).order_by(Prediction.resolved_at.desc())
+        )
+        resolved = result.scalars().all()
+        if resolved:
+            hits = sum(1 for p in resolved if p.hit == 1)
+            misses = sum(1 for p in resolved if p.hit == 0)
+            total = hits + misses
+            hit_rate = hits / total if total > 0 else 0
+
+            recent_lines = []
+            for p in resolved[:5]:
+                symbol = "correct" if p.hit == 1 else "wrong"
+                recent_lines.append(f"{p.node_id} {p.predicted_direction} → {symbol}")
+
+            parts.append(
+                f"\n\n## Your Track Record\n"
+                f"Overall: {total} resolved predictions, {hit_rate:.0%} hit rate ({hits} correct, {misses} wrong)\n"
+                f"Recent: {' · '.join(recent_lines)}\n"
+                f"{'Calibration: your hit rate is below 50% — consider being more conservative with predictions.' if hit_rate < 0.5 and total >= 5 else ''}"
+            )
+    except Exception:
+        pass
+
+    return "".join(parts)

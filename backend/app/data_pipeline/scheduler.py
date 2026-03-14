@@ -333,8 +333,29 @@ async def scheduled_sentiment_decay():
         logger.exception("Sentiment decay failed: %s", e)
 
 
+async def scheduled_prediction_resolution():
+    """Resolve expired predictions by comparing predicted vs actual sentiment."""
+    from app.db.connection import async_session
+    from app.graph_engine.predictions import resolve_expired_predictions
+
+    logger.info("Scheduled prediction resolution starting")
+    try:
+        async with async_session() as session:
+            count = await resolve_expired_predictions(session)
+            if count > 0:
+                logger.info("Resolved %d expired predictions", count)
+    except Exception as e:
+        logger.exception("Prediction resolution failed: %s", e)
+
+
 def setup_scheduler() -> AsyncIOScheduler:
     """Configure all scheduled jobs."""
+    from app.config import settings
+
+    if not settings.scheduler_enabled:
+        logger.info("Scheduler disabled (set SCHEDULER_ENABLED=true in .env to enable)")
+        return scheduler
+
     scheduler.add_job(
         scheduled_fred_fetch,
         IntervalTrigger(hours=4),
@@ -381,6 +402,12 @@ def setup_scheduler() -> AsyncIOScheduler:
         scheduled_sentiment_decay,
         CronTrigger(hour=2, minute=0),
         id="sentiment_decay",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_prediction_resolution,
+        IntervalTrigger(hours=1),
+        id="prediction_resolution",
         replace_existing=True,
     )
     return scheduler

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Agent
     agent_max_tool_rounds: int = 25
 
+    # Scheduler
+    scheduler_enabled: bool = False  # Set True in .env to enable scheduled jobs (burns API credits)
+
     # Anomaly detection
     anomaly_z_threshold: float = 2.0
     anomaly_min_observations: int = 5

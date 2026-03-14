@@ -6,6 +6,7 @@ import NodePanel from "@/components/NodePanel";
 import FilterBar from "@/components/FilterBar";
 import SentimentTimeline from "@/components/SentimentTimeline";
 import AgentRunLog from "@/components/AgentRunLog";
+import PredictionsPanel from "@/components/PredictionsPanel";
 import TimeSlider from "@/components/TimeSlider";
 import PortfolioPanel from "@/components/PortfolioPanel";
 import TopologySuggestions from "@/components/TopologySuggestions";
@@ -50,6 +51,7 @@ export default function Home() {
       {/* Bottom toolbar: centered */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-2">
         <AgentRunLog />
+        <PredictionsPanel />
         <NodeLocator />
         <TopologySuggestions />
         <TimeSlider />

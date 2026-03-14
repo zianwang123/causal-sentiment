@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.orchestrator import run_analysis
 from app.db.connection import get_session
-from app.models.observations import AgentRun
+from app.models.observations import AgentRun, Prediction
 
 logger = logging.getLogger(__name__)
 
@@ -180,3 +180,84 @@ async def _notify_graph_update(app_state):
     async with async_session() as session:
         graph_data = await get_full_graph(session)
         await manager.broadcast({"type": "graph_update", "data": graph_data.model_dump()})
+
+
+# ── Prediction endpoints ────────────────────────────────────────
+
+
+class PredictionOut(BaseModel):
+    id: int
+    node_id: str
+    predicted_direction: str
+    predicted_sentiment: float
+    horizon_hours: int
+    reasoning: str
+    created_at: datetime
+    resolved_at: datetime | None
+    actual_sentiment: float | None
+    hit: int | None
+
+    model_config = {"from_attributes": True}
+
+
+class PredictionSummary(BaseModel):
+    total: int
+    resolved: int
+    pending: int
+    hit_rate: float | None
+    by_direction: dict
+
+
+@router.get("/predictions", response_model=list[PredictionOut])
+async def list_predictions(
+    limit: int = 20,
+    status: str | None = None,
+    node_id: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """List predictions with optional filters."""
+    query = select(Prediction).order_by(Prediction.created_at.desc())
+    if status == "pending":
+        query = query.where(Prediction.resolved_at.is_(None))
+    elif status == "resolved":
+        query = query.where(Prediction.resolved_at.isnot(None))
+    if node_id:
+        query = query.where(Prediction.node_id == node_id)
+    query = query.limit(limit)
+
+    result = await session.execute(query)
+    return [PredictionOut.model_validate(p) for p in result.scalars().all()]
+
+
+@router.get("/predictions/summary", response_model=PredictionSummary)
+async def get_prediction_summary(
+    session: AsyncSession = Depends(get_session),
+):
+    """Aggregate prediction stats."""
+    result = await session.execute(select(Prediction))
+    all_preds = result.scalars().all()
+
+    resolved = [p for p in all_preds if p.resolved_at is not None]
+    pending = [p for p in all_preds if p.resolved_at is None]
+    hits = sum(1 for p in resolved if p.hit == 1)
+    misses = sum(1 for p in resolved if p.hit == 0)
+    total_decided = hits + misses
+
+    by_direction: dict[str, dict] = {}
+    for p in resolved:
+        d = p.predicted_direction
+        if d not in by_direction:
+            by_direction[d] = {"total": 0, "hits": 0, "misses": 0}
+        by_direction[d]["total"] += 1
+        if p.hit == 1:
+            by_direction[d]["hits"] += 1
+        elif p.hit == 0:
+            by_direction[d]["misses"] += 1
+
+    return PredictionSummary(
+        total=len(all_preds),
+        resolved=len(resolved),
+        pending=len(pending),
+        hit_rate=round(hits / total_decided, 4) if total_decided > 0 else None,
+        by_direction=by_direction,
+    )
