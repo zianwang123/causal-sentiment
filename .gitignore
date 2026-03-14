@@ -32,3 +32,11 @@ pgdata/
 # Claude Code
 .claude/
 CLAUDE.md
+
+# mcp-local-rag (generated data, local-only)
+lancedb/
+models/
+
+# Personal research & MCP config
+.mcp.json
+research/
