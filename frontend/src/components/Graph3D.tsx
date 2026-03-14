@@ -129,7 +129,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     useGraphStore.setState({ focusNodeId: null });
   }, [focusNodeId, nodes]);
 
-  const graphData = { nodes, links };
+  const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
   const handleClick = useCallback(
     (node: any) => {

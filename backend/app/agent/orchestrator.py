@@ -228,10 +228,12 @@ async def run_analysis(
 
     except Exception as e:
         logger.exception("Agent run failed")
+        await session.rollback()
         agent_run.status = "error"
         agent_run.error = str(e)
         agent_run.tool_calls = tool_calls_log
         agent_run.finished_at = datetime.utcnow()
+        session.add(agent_run)
 
     await session.commit()
     return agent_run

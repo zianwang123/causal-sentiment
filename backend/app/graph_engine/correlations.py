@@ -148,6 +148,10 @@ async def update_dynamic_weights(
     base_ratio = settings.edge_weight_base_ratio
     updated = 0
     flipped = 0
+
+    # Collect graph mutations to apply under lock
+    graph_updates: list[tuple[str, str, float, float]] = []
+
     for edge in edges:
         corr = correlations.get((edge.source_id, edge.target_id))
         if corr is None:
@@ -182,13 +186,18 @@ async def update_dynamic_weights(
         edge.dynamic_weight = new_dynamic_weight
         updated += 1
 
-        # Update in-memory graph edge
-        if graph.has_edge(edge.source_id, edge.target_id):
-            edge_data = graph[edge.source_id][edge.target_id]
-            edge_data["dynamic_weight"] = new_dynamic_weight
-            edge_data["effective_weight"] = (
-                base_ratio * edge.base_weight + (1 - base_ratio) * new_dynamic_weight
-            )
+        effective = base_ratio * edge.base_weight + (1 - base_ratio) * new_dynamic_weight
+        graph_updates.append((edge.source_id, edge.target_id, new_dynamic_weight, effective))
+
+    # Apply in-memory graph updates under lock
+    if graph_updates:
+        from app.main import app_state
+        async with app_state.graph_lock:
+            for src, tgt, dw, ew in graph_updates:
+                if graph.has_edge(src, tgt):
+                    edge_data = graph[src][tgt]
+                    edge_data["dynamic_weight"] = dw
+                    edge_data["effective_weight"] = ew
 
     await session.commit()
     logger.info(

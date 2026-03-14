@@ -148,6 +148,18 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Response returns immediately — analysis runs in background
       // agentRunning stays true until WebSocket sends completion
+      // Safety timeout: reset after 15 minutes if no agent_complete arrives
+      const timeoutId = setTimeout(() => {
+        if (useGraphStore.getState().agentRunning) {
+          useGraphStore.setState({
+            agentRunning: false,
+            agentProgress: null,
+            error: "Agent analysis timed out (15 min). Check backend logs.",
+          });
+        }
+      }, 15 * 60 * 1000);
+      // Store timeout so it can be cleared on normal completion
+      (useGraphStore as any)._agentTimeout = timeoutId;
     } catch (e) {
       set({ error: (e as Error).message, agentRunning: false, agentProgress: null });
     }
@@ -201,6 +213,12 @@ export function useGraphWebSocket() {
       });
     });
     const unsubComplete = wsClient.on("agent_complete", () => {
+      // Clear safety timeout
+      const timeoutId = (useGraphStore as any)._agentTimeout;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        (useGraphStore as any)._agentTimeout = null;
+      }
       useGraphStore.setState({ agentRunning: false, agentProgress: null });
       useGraphStore.getState().fetchGraph();
     });

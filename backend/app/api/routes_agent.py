@@ -143,24 +143,40 @@ async def _run_analysis_background(node_ids: list[str], trigger: str, app_state)
     from app.api.websocket import manager
     from app.db.connection import async_session
 
-    async with async_session() as session:
-        agent_run = await run_analysis(
-            node_ids=node_ids,
-            session=session,
-            graph=app_state.graph,
-            trigger=trigger,
-        )
-        # Notify WebSocket clients: analysis complete + updated graph
-        await manager.broadcast({
-            "type": "agent_complete",
-            "data": {
-                "id": agent_run.id,
-                "status": agent_run.status,
-                "summary": agent_run.summary,
-                "error": agent_run.error,
-            },
-        })
-        await _notify_graph_update(app_state)
+    try:
+        async with async_session() as session:
+            agent_run = await run_analysis(
+                node_ids=node_ids,
+                session=session,
+                graph=app_state.graph,
+                trigger=trigger,
+            )
+            # Notify WebSocket clients: analysis complete + updated graph
+            await manager.broadcast({
+                "type": "agent_complete",
+                "data": {
+                    "id": agent_run.id,
+                    "status": agent_run.status,
+                    "summary": agent_run.summary,
+                    "error": agent_run.error,
+                },
+            })
+            await _notify_graph_update(app_state)
+    except Exception as e:
+        logger.exception("Background analysis failed: %s", e)
+        # Still notify frontend so it doesn't get stuck
+        try:
+            await manager.broadcast({
+                "type": "agent_complete",
+                "data": {
+                    "id": 0,
+                    "status": "error",
+                    "summary": None,
+                    "error": str(e),
+                },
+            })
+        except Exception:
+            pass
 
 
 def _handle_notification_error(task: asyncio.Task) -> None:

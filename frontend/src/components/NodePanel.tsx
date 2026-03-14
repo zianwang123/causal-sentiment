@@ -91,10 +91,14 @@ function AnnotationsSection({ nodeId }: { nodeId: string }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/api/annotations?node_id=${nodeId}`)
+    const controller = new AbortController();
+    fetch(`${API}/api/annotations?node_id=${nodeId}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((data) => setAnnotations(data))
-      .catch(() => setAnnotations([]));
+      .catch((e) => {
+        if (e.name !== "AbortError") setAnnotations([]);
+      });
+    return () => controller.abort();
   }, [nodeId]);
 
   const handleAdd = async () => {
@@ -117,22 +121,36 @@ function AnnotationsSection({ nodeId }: { nodeId: string }) {
   };
 
   const handleDelete = async (id: number) => {
-    await fetch(`${API}/api/annotations/${id}`, { method: "DELETE" });
-    setAnnotations((prev) => prev.filter((a) => a.id !== id));
+    try {
+      const res = await fetch(`${API}/api/annotations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        console.error("Failed to delete annotation:", res.status);
+        return;
+      }
+      setAnnotations((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) {
+      console.error("Failed to delete annotation:", e);
+    }
   };
 
   const handleTogglePin = async (a: Annotation) => {
-    const res = await fetch(`${API}/api/annotations/${a.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pinned: !a.pinned }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch(`${API}/api/annotations/${a.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: !a.pinned }),
+      });
+      if (!res.ok) {
+        console.error("Failed to update annotation:", res.status);
+        return;
+      }
       const updated: Annotation = await res.json();
       setAnnotations((prev) =>
         prev.map((x) => (x.id === updated.id ? updated : x))
           .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
       );
+    } catch (e) {
+      console.error("Failed to update annotation:", e);
     }
   };
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -305,14 +305,14 @@ async def scheduled_sentiment_decay():
         async with async_session() as session:
             result = await session.execute(select(Node))
             nodes = result.scalars().all()
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             updated = 0
             for node in nodes:
                 if not node.composite_sentiment or abs(node.composite_sentiment) < 0.01:
                     continue
                 if not node.last_updated:
                     continue
-                age_hours = (now - node.last_updated.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+                age_hours = (now - node.last_updated).total_seconds() / 3600
                 from app.config import settings as _settings
                 if age_hours < _settings.sentiment_decay_skip_hours:
                     continue
@@ -324,11 +324,12 @@ async def scheduled_sentiment_decay():
             await session.commit()
             logger.info("Sentiment decay applied to %d nodes", updated)
 
-            # Update in-memory graph
+            # Update in-memory graph under lock
             from app.main import app_state
-            for node in nodes:
-                if node.id in app_state.graph:
-                    app_state.graph.nodes[node.id]["composite_sentiment"] = node.composite_sentiment or 0.0
+            async with app_state.graph_lock:
+                for node in nodes:
+                    if node.id in app_state.graph:
+                        app_state.graph.nodes[node.id]["composite_sentiment"] = node.composite_sentiment or 0.0
     except Exception as e:
         logger.exception("Sentiment decay failed: %s", e)
 

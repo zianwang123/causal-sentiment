@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class AppState:
     graph: nx.DiGraph = field(default_factory=nx.DiGraph)
+    graph_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 app_state = AppState()

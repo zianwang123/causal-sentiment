@@ -245,27 +245,29 @@ async def update_sentiment_signal(
     )
     session.add(obs)
 
-    # Update in-memory graph
-    if node_id in graph:
-        graph.nodes[node_id]["composite_sentiment"] = sentiment
-        graph.nodes[node_id]["confidence"] = confidence
+    # Update in-memory graph and run propagation under lock
+    from app.main import app_state
+    async with app_state.graph_lock:
+        if node_id in graph:
+            graph.nodes[node_id]["composite_sentiment"] = sentiment
+            graph.nodes[node_id]["confidence"] = confidence
 
-    # Run propagation (regime-aware)
-    from app.graph_engine.regimes import detect_regime
-    regime = detect_regime(graph)
-    prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
+        # Run propagation (regime-aware)
+        from app.graph_engine.regimes import detect_regime
+        regime = detect_regime(graph)
+        prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
 
-    # Update propagated nodes in DB
-    for target_id, impact in prop_result.impacts.items():
-        target_result = await session.execute(select(Node).where(Node.id == target_id))
-        target_node = target_result.scalar_one_or_none()
-        if target_node:
-            # Blend existing with propagated signal
-            blend = settings.propagation_blend_ratio
-            blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
-            target_node.composite_sentiment = clamp_sentiment(blended)
-            if target_id in graph:
-                graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
+        # Update propagated nodes in DB
+        for target_id, impact in prop_result.impacts.items():
+            target_result = await session.execute(select(Node).where(Node.id == target_id))
+            target_node = target_result.scalar_one_or_none()
+            if target_node:
+                # Blend existing with propagated signal
+                blend = settings.propagation_blend_ratio
+                blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
+                target_node.composite_sentiment = clamp_sentiment(blended)
+                if target_id in graph:
+                    graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
 
     await session.commit()
 
