@@ -12,9 +12,11 @@
 
 ## Why This Exists
 
-Most macro analysts hold a causal model of the world in their heads: "if the Fed raises rates, credit spreads widen, HY bonds drop, equity risk premiums rise, SPY falls." But this model is implicit, fragile, and hard to stress-test. Traditional tools analyze assets in isolation — one stock, one headline at a time.
+Traditional sentiment analysis tools treat assets in isolation — analyzing one stock, one headline, one data point at a time. But financial markets are deeply interconnected: a Fed rate decision affects Treasury yields, which affects credit spreads, which affects corporate bonds, which affects equity valuations, and so on. These cascading causal relationships are what macro investors like Bridgewater model systematically.
 
-This project makes that mental model **explicit, visual, and machine-augmented**.
+This project attempts to capture that interconnectedness in a causal graph and make it tangible through 3D visualization. Instead of reading a sentiment score for the S&P 500 in a vacuum, you can see how a change in CPI expectations propagates through monetary policy, into interest rates, through credit markets, and ultimately into equity indices — with the AI agent doing the heavy lifting of data gathering and analysis.
+
+Most macro analysts hold this causal model in their heads, but it's implicit, fragile, and hard to stress-test. This project makes it **explicit, visual, and machine-augmented**.
 
 ### The core idea: shock propagation as a thinking tool
 
