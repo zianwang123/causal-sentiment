@@ -2,9 +2,9 @@
 
 **A second brain for macro analysts.** See the financial world as an interconnected causal graph. Ask "what if oil crashes?" and watch the shock cascade through energy, inflation, rates, and equities in real time. Pin your own reasoning to nodes. Let an AI agent do the data-gathering grunt work. The graph remembers what you think, not just what the data says.
 
-> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
+> **This is an actively developing prototype.** It is not production software. The sentiment analysis, propagation model, and AI-generated insights are experimental and may contain errors. Do **NOT** use this for actual trading or investment decisions. The goal is to explore an idea — not to generate alpha. Use at your own risk.
 
-> **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
+> New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR.
 
 ![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/yourusername/causal-sentiment/actions/workflows/ci.yml/badge.svg)
 
@@ -14,10 +14,23 @@
 
 Most macro analysts hold a causal model of the world in their heads: "if the Fed raises rates, credit spreads widen, HY bonds drop, equity risk premiums rise, SPY falls." But this model is implicit, fragile, and hard to stress-test. Traditional tools analyze assets in isolation — one stock, one headline at a time.
 
-This project makes that mental model **explicit, visual, and machine-augmented**:
+This project makes that mental model **explicit, visual, and machine-augmented**.
+
+### The core idea: shock propagation as a thinking tool
+
+The graph isn't just a pretty visualization — it's a reasoning framework. When you shock a node (say, oil sentiment drops to -0.8), the impact doesn't just affect oil. It **propagates** through the causal network:
+
+- **Some nodes get hit hard** — energy stocks take a direct hit (1 hop, high weight)
+- **Some nodes feel it indirectly** — inflation expectations shift, which nudges rate expectations, which affects equities (3 hops, decayed)
+- **Some nodes actually benefit** — airlines and consumers gain from lower energy costs (negative causal edge = inverse relationship)
+- **Some nodes barely notice** — geopolitical risk index is causally distant, impact decays to near-zero
+
+This is exactly how a macro strategist thinks about positioning: "if X happens, what gets hurt, what benefits, and what's uncorrelated?" The graph makes that reasoning visible and testable. You can brainstorm hedges, find second-order effects you hadn't considered, and spot which causal channels are currently hot vs. muted.
+
+### What it does
 
 - **52 nodes** (macro factors, rates, commodities, equities, currencies) connected by **117 directed causal edges** — the graph structure IS the domain knowledge
-- **What-if simulator** — drag a node to a hypothetical sentiment and watch the shock cascade through the graph. "If oil goes to -0.8, what happens to energy, inflation, and equities?" The answer is visible in seconds.
+- **What-if simulator** — drag a node to a hypothetical sentiment and watch the shock cascade through the graph. See which nodes get crushed, which benefit, which are unaffected.
 - **AI agent** — Claude or GPT fetches real data (FRED, yfinance, news, Reddit, SEC), analyzes it, and writes sentiment through a three-phase reasoning loop (Plan → Analyze → Validate)
 - **Analyst annotations** — pin your own notes to nodes. "I think this CPI reading is transitory because of base effects." The tool remembers your reasoning across sessions.
 - **Regime narrator** — not just "risk-off 0.7" but a story: "Shifted risk-off 3 days ago, driven by credit spread widening. Watch for 10Y breaking 4.5%."
