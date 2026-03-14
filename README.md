@@ -2,7 +2,7 @@
 
 **A second brain for macro analysts.** See the financial world as an interconnected causal graph. Ask "what if oil crashes?" and watch the shock cascade through energy, inflation, rates, and equities in real time. Pin your own reasoning to nodes. Let an AI agent do the data-gathering grunt work. The graph remembers what you think, not just what the data says.
 
-> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
+> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors and bugs, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
 
 > **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
 
