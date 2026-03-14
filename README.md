@@ -2,9 +2,9 @@
 
 **A second brain for macro analysts.** See the financial world as an interconnected causal graph. Ask "what if oil crashes?" and watch the shock cascade through energy, inflation, rates, and equities in real time. Pin your own reasoning to nodes. Let an AI agent do the data-gathering grunt work. The graph remembers what you think, not just what the data says.
 
-> **This is an actively developing prototype.** It is not production software. The sentiment analysis, propagation model, and AI-generated insights are experimental and may contain errors. Do **NOT** use this for actual trading or investment decisions. The goal is to explore an idea — not to generate alpha. Use at your own risk.
+> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
 
-> New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR.
+> **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
 
 ![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/yourusername/causal-sentiment/actions/workflows/ci.yml/badge.svg)
 
