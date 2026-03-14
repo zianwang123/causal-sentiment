@@ -79,12 +79,17 @@ Now proceed with your analysis. Fetch data and update sentiment for these nodes:
 Key FRED series: FEDFUNDS, CPIAUCSL, GDP, UNRATE, T10Y2Y, VIXCLS, DTWEXBGS, BAMLH0A0HYM2, BAMLC0A0CM, DGS2, DGS10, DGS30, DCOILWTICO
 Market tickers: SPY, QQQ, IWM, XLK, XLE, XLF, GLD, SLV, USO, UNG, HG=F, ZW=F, DX-Y.NYB
 
-For each update, provide:
+**CRITICAL:** You MUST call `update_sentiment_signal` for EVERY node you analyze. \
+Do NOT just describe your analysis in text — you must write sentiment to the graph via tool calls. \
+After fetching data, immediately start calling `update_sentiment_signal` for each node. \
+Do not stop until you have updated all requested nodes.
+
+For each `update_sentiment_signal` call, provide:
 - Sentiment score with evidence citing specific data points
 - Confidence breakdown (data_freshness, source_agreement, signal_strength)
 - Sources list
 
-Check graph neighborhoods before updating to understand causal context.\
+Work in batches: fetch data for a group of related nodes, then update them, then move to the next group.\
 """
 
 VALIDATION_PROMPT = """\
