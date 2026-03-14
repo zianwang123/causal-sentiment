@@ -40,3 +40,6 @@ models/
 # Personal research & MCP config
 .mcp.json
 research/
+
+# Git worktrees
+.worktrees/
