@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useNodeSelection } from "@/hooks/useNodeSelection";
 import { sentimentToColor, edgeDirectionColor } from "@/lib/graphTransforms";
@@ -11,6 +11,208 @@ const BacktestChart = dynamic(() => import("./BacktestChart"), { ssr: false });
 
 import { API_URL as API } from "@/lib/config";
 import { parseUTCTimestamp } from "@/lib/dateUtils";
+
+
+function SimulationSlider({ nodeId, currentSentiment }: { nodeId: string; currentSentiment: number }) {
+  const runSimulation = useGraphStore((s) => s.runSimulation);
+  const clearSimulation = useGraphStore((s) => s.clearSimulation);
+  const simulation = useGraphStore((s) => s.simulation);
+  const [value, setValue] = useState(currentSentiment);
+  const [running, setRunning] = useState(false);
+
+  // Reset slider when node changes
+  useEffect(() => {
+    setValue(currentSentiment);
+  }, [nodeId, currentSentiment]);
+
+  const handleSimulate = useCallback(async () => {
+    setRunning(true);
+    await runSimulation(nodeId, value);
+    setRunning(false);
+  }, [nodeId, value, runSimulation]);
+
+  const isActive = simulation?.source_node === nodeId;
+
+  return (
+    <div className="mb-4 bg-gray-800 rounded p-3">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-semibold text-gray-400 uppercase">What-If Shock</h4>
+        {isActive && (
+          <button
+            onClick={clearSimulation}
+            className="text-[10px] text-gray-500 hover:text-gray-300"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] text-red-400 w-6">-1.0</span>
+        <input
+          type="range"
+          min={-1}
+          max={1}
+          step={0.05}
+          value={value}
+          onChange={(e) => setValue(parseFloat(e.target.value))}
+          className="flex-1 h-1.5 accent-orange-500"
+        />
+        <span className="text-[10px] text-green-400 w-6">+1.0</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-mono" style={{ color: sentimentToColor(value) }}>
+          {value >= 0 ? "+" : ""}{value.toFixed(2)}
+          <span className="text-gray-500 ml-1">
+            (delta: {(value - currentSentiment) >= 0 ? "+" : ""}{(value - currentSentiment).toFixed(2)})
+          </span>
+        </span>
+        <button
+          onClick={handleSimulate}
+          disabled={running || Math.abs(value - currentSentiment) < 0.01}
+          className="bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-[11px] py-1 px-3 rounded transition-colors"
+        >
+          {running ? "..." : "Simulate"}
+        </button>
+      </div>
+      {isActive && (
+        <div className="mt-2 text-[10px] text-orange-300">
+          {simulation.total_nodes_affected} nodes affected · regime: {simulation.regime}
+        </div>
+      )}
+    </div>
+  );
+}
+
+import type { Annotation } from "@/types/graph";
+
+function AnnotationsSection({ nodeId }: { nodeId: string }) {
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [newText, setNewText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API}/api/annotations?node_id=${nodeId}`, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((data) => setAnnotations(data))
+      .catch((e) => {
+        if (e.name !== "AbortError") setAnnotations([]);
+      });
+    return () => controller.abort();
+  }, [nodeId]);
+
+  const handleAdd = async () => {
+    if (!newText.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/annotations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node_id: nodeId, text: newText.trim() }),
+      });
+      if (res.ok) {
+        const created: Annotation = await res.json();
+        setAnnotations((prev) => [created, ...prev]);
+        setNewText("");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      const res = await fetch(`${API}/api/annotations/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        console.error("Failed to delete annotation:", res.status);
+        return;
+      }
+      setAnnotations((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) {
+      console.error("Failed to delete annotation:", e);
+    }
+  };
+
+  const handleTogglePin = async (a: Annotation) => {
+    try {
+      const res = await fetch(`${API}/api/annotations/${a.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned: !a.pinned }),
+      });
+      if (!res.ok) {
+        console.error("Failed to update annotation:", res.status);
+        return;
+      }
+      const updated: Annotation = await res.json();
+      setAnnotations((prev) =>
+        prev.map((x) => (x.id === updated.id ? updated : x))
+          .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+      );
+    } catch (e) {
+      console.error("Failed to update annotation:", e);
+    }
+  };
+
+  return (
+    <div className="mb-4">
+      <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
+        Analyst Notes ({annotations.length})
+      </h4>
+      {annotations.length > 0 && (
+        <div className="space-y-1 max-h-28 overflow-y-auto mb-2">
+          {annotations.map((a) => (
+            <div
+              key={a.id}
+              className={`text-xs rounded px-2 py-1.5 ${a.pinned ? "bg-yellow-900/20 border border-yellow-800/30" : "bg-gray-800"}`}
+            >
+              <div className="flex items-start justify-between gap-1">
+                <span className="text-gray-300 flex-1">{a.text}</span>
+                <div className="flex gap-1 flex-shrink-0 mt-0.5">
+                  <button
+                    onClick={() => handleTogglePin(a)}
+                    className={`text-[10px] ${a.pinned ? "text-yellow-400" : "text-gray-600 hover:text-gray-400"}`}
+                    title={a.pinned ? "Unpin" : "Pin"}
+                  >
+                    {a.pinned ? "\u2605" : "\u2606"}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(a.id)}
+                    className="text-[10px] text-gray-600 hover:text-red-400"
+                    title="Delete"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                {new Date(a.created_at).toLocaleDateString()}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={newText}
+          onChange={(e) => setNewText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          placeholder="Add a note..."
+          className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gray-500"
+        />
+        <button
+          onClick={handleAdd}
+          disabled={saving || !newText.trim()}
+          className="bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-xs px-2 py-1 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
 
 interface RawDataPoint {
   source: string;
@@ -165,6 +367,9 @@ export default function NodePanel() {
         </div>
       </div>
 
+      {/* What-If Simulator */}
+      <SimulationSlider nodeId={selectedNode.id} currentSentiment={selectedNode.sentiment} />
+
       <SentimentChart nodeId={selectedNode.id} />
 
       <BacktestChart nodeId={selectedNode.id} />
@@ -223,6 +428,9 @@ export default function NodePanel() {
           </div>
         </div>
       )}
+
+      {/* Analyst Notes */}
+      <AnnotationsSection nodeId={selectedNode.id} />
 
       {/* Connected Edges */}
       {(() => {

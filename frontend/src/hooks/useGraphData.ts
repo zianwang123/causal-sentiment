@@ -10,6 +10,7 @@ import type {
   GraphData,
   GraphNode,
   RegimeInfo,
+  SimulationResult,
 } from "@/types/graph";
 import { transformGraphData } from "@/lib/graphTransforms";
 import { wsClient } from "@/lib/websocket";
@@ -36,6 +37,7 @@ interface GraphStore {
   snapshotTimestamp: string | null;
   focusNodeId: string | null;
   clustered: boolean;
+  simulation: SimulationResult | null;
   loading: boolean;
   error: string | null;
 
@@ -49,6 +51,8 @@ interface GraphStore {
   setSelectedNode: (node: ForceGraphNode | null) => void;
   triggerAnalysis: (nodeIds?: string[]) => Promise<void>;
   updateFromWs: (data: GraphData) => void;
+  runSimulation: (nodeId: string, sentiment: number) => Promise<void>;
+  clearSimulation: () => void;
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -63,6 +67,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   snapshotTimestamp: null,
   focusNodeId: null,
   clustered: false,
+  simulation: null,
   loading: false,
   error: null,
 
@@ -143,6 +148,18 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Response returns immediately — analysis runs in background
       // agentRunning stays true until WebSocket sends completion
+      // Safety timeout: reset after 15 minutes if no agent_complete arrives
+      const timeoutId = setTimeout(() => {
+        if (useGraphStore.getState().agentRunning) {
+          useGraphStore.setState({
+            agentRunning: false,
+            agentProgress: null,
+            error: "Agent analysis timed out (15 min). Check backend logs.",
+          });
+        }
+      }, 15 * 60 * 1000);
+      // Store timeout so it can be cleared on normal completion
+      (useGraphStore as any)._agentTimeout = timeoutId;
     } catch (e) {
       set({ error: (e as Error).message, agentRunning: false, agentProgress: null });
     }
@@ -152,6 +169,23 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
     const { nodes, links } = transformGraphData(data);
     set({ nodes, links });
   },
+
+  runSimulation: async (nodeId, sentiment) => {
+    try {
+      const res = await fetch(`${API_URL}/api/graph/simulate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node_id: nodeId, hypothetical_sentiment: sentiment }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: SimulationResult = await res.json();
+      set({ simulation: data });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  clearSimulation: () => set({ simulation: null }),
 }));
 
 export function useGraphWebSocket() {
@@ -179,6 +213,12 @@ export function useGraphWebSocket() {
       });
     });
     const unsubComplete = wsClient.on("agent_complete", () => {
+      // Clear safety timeout
+      const timeoutId = (useGraphStore as any)._agentTimeout;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        (useGraphStore as any)._agentTimeout = null;
+      }
       useGraphStore.setState({ agentRunning: false, agentProgress: null });
       useGraphStore.getState().fetchGraph();
     });

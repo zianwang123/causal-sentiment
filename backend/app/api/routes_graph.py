@@ -542,3 +542,286 @@ async def reject_suggestion(
     await session.commit()
 
     return {"status": "rejected"}
+
+
+# ── REGIME NARRATOR ──────────────────────────────────────────────────
+
+class RegimeNarrativeOut(BaseModel):
+    narrative: str
+    regime: str
+    confidence: float
+    composite_score: float
+    top_drivers: list[str]
+
+
+@router.post("/regime/narrative", response_model=RegimeNarrativeOut)
+async def generate_regime_narrative(
+    session: AsyncSession = Depends(get_session),
+):
+    """Generate an LLM narrative explaining the current market regime."""
+    from app.main import app_state
+    from app.graph_engine.regimes import detect_regime, get_regime_history
+    from app.config import settings
+
+    graph = app_state.graph
+    regime = detect_regime(graph)
+
+    # Get recent regime history for transition detection
+    history = await get_regime_history(session, days=7)
+
+    # Find top drivers (highest absolute contributing signals)
+    sorted_signals = sorted(
+        regime.contributing_signals.items(),
+        key=lambda x: abs(x[1]),
+        reverse=True,
+    )
+    top_drivers = [s[0] for s in sorted_signals[:3]]
+
+    # Detect regime transition
+    transition_info = ""
+    if len(history) >= 2:
+        prev_state = history[-2]["state"] if len(history) >= 2 else None
+        if prev_state and prev_state != regime.state.value:
+            transition_info = f"The regime recently shifted from {prev_state} to {regime.state.value}."
+
+    # Build prompt for Claude
+    signal_desc = ", ".join(
+        f"{node_id} ({sentiment:+.2f})"
+        for node_id, sentiment in sorted_signals
+    )
+    prompt = (
+        f"You are a macro strategist. Write a concise 2-3 sentence narrative about the current market regime.\n\n"
+        f"Regime: {regime.state.value.replace('_', ' ').upper()} (confidence: {regime.confidence:.0%}, composite: {regime.composite_score:+.3f})\n"
+        f"Contributing signals: {signal_desc}\n"
+        f"{transition_info}\n\n"
+        f"Be specific about which indicators are driving the regime. Mention what to watch for next. "
+        f"No bullet points, just flowing prose. Maximum 3 sentences."
+    )
+
+    # Call LLM
+    try:
+        if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            response = client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            narrative = response.content[0].text
+        elif settings.openai_api_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            response = client.chat.completions.create(
+                model=settings.openai_model,
+                max_tokens=200,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            narrative = response.choices[0].message.content or ""
+        else:
+            # Fallback: generate a simple narrative without LLM
+            drivers_str = ", ".join(top_drivers)
+            narrative = (
+                f"Market is in {regime.state.value.replace('_', ' ')} mode "
+                f"(confidence {regime.confidence:.0%}, composite {regime.composite_score:+.3f}). "
+                f"Key drivers: {drivers_str}. {transition_info}"
+            )
+    except Exception as e:
+        # Fallback on LLM error
+        drivers_str = ", ".join(top_drivers)
+        narrative = (
+            f"Market is in {regime.state.value.replace('_', ' ')} mode "
+            f"(confidence {regime.confidence:.0%}). "
+            f"Key drivers: {drivers_str}."
+        )
+
+    return RegimeNarrativeOut(
+        narrative=narrative,
+        regime=regime.state.value,
+        confidence=regime.confidence,
+        composite_score=regime.composite_score,
+        top_drivers=top_drivers,
+    )
+
+
+# ── WHAT-IF SHOCK SIMULATOR ──────────────────────────────────────────
+
+class SimulateRequest(BaseModel):
+    node_id: str
+    hypothetical_sentiment: float
+
+
+class SimulationImpact(BaseModel):
+    node_id: str
+    label: str
+    impact: float
+    path: list[str]
+    hops: int
+
+
+class SimulateResponse(BaseModel):
+    source_node: str
+    source_label: str
+    initial_signal: float
+    current_sentiment: float
+    shock_delta: float
+    regime: str
+    impacts: list[SimulationImpact]
+    total_nodes_affected: int
+
+
+@router.post("/simulate", response_model=SimulateResponse)
+async def simulate_shock(req: SimulateRequest):
+    """Run a read-only what-if shock propagation. No DB writes."""
+    from fastapi import HTTPException
+    from app.main import app_state
+    from app.graph_engine.propagation import propagate_signal
+    from app.graph_engine.regimes import detect_regime
+
+    graph = app_state.graph
+    if req.node_id not in graph:
+        raise HTTPException(status_code=404, detail=f"Node '{req.node_id}' not found")
+
+    sentiment = max(-1.0, min(1.0, req.hypothetical_sentiment))
+    current = graph.nodes[req.node_id].get("composite_sentiment", 0.0) or 0.0
+    shock_delta = sentiment - current
+
+    regime = detect_regime(graph)
+    result = propagate_signal(
+        graph,
+        req.node_id,
+        shock_delta,
+        regime=regime.state.value,
+    )
+
+    impacts = []
+    for node_id, impact in sorted(result.impacts.items(), key=lambda x: abs(x[1]), reverse=True):
+        if node_id == req.node_id:
+            continue
+        label = graph.nodes[node_id].get("label", node_id) if node_id in graph else node_id
+        path = result.paths.get(node_id, [req.node_id, node_id])
+        impacts.append(SimulationImpact(
+            node_id=node_id,
+            label=label,
+            impact=round(impact, 4),
+            path=path,
+            hops=len(path) - 1,
+        ))
+
+    source_label = graph.nodes[req.node_id].get("label", req.node_id)
+    return SimulateResponse(
+        source_node=req.node_id,
+        source_label=source_label,
+        initial_signal=round(sentiment, 4),
+        current_sentiment=round(current, 4),
+        shock_delta=round(shock_delta, 4),
+        regime=regime.state.value,
+        impacts=impacts,
+        total_nodes_affected=len(impacts),
+    )
+
+
+# ── ANALYST ANNOTATIONS ──────────────────────────────────────────────
+
+annotations_router = APIRouter(prefix="/api/annotations", tags=["annotations"])
+
+
+class AnnotationCreate(BaseModel):
+    node_id: str
+    text: str
+    pinned: bool = False
+
+
+class AnnotationUpdate(BaseModel):
+    text: str | None = None
+    pinned: bool | None = None
+
+
+class AnnotationOut(BaseModel):
+    id: int
+    node_id: str
+    text: str
+    pinned: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+@annotations_router.get("", response_model=list[AnnotationOut])
+async def list_annotations(
+    node_id: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """List annotations, optionally filtered by node_id."""
+    from app.models.observations import Annotation
+
+    query = select(Annotation).order_by(Annotation.pinned.desc(), Annotation.created_at.desc())
+    if node_id:
+        query = query.where(Annotation.node_id == node_id)
+    result = await session.execute(query)
+    return [AnnotationOut.model_validate(a) for a in result.scalars().all()]
+
+
+@annotations_router.post("", response_model=AnnotationOut)
+async def create_annotation(
+    body: AnnotationCreate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Create a new annotation on a node."""
+    from app.models.observations import Annotation
+
+    annotation = Annotation(
+        node_id=body.node_id,
+        text=body.text,
+        pinned=body.pinned,
+    )
+    session.add(annotation)
+    await session.commit()
+    await session.refresh(annotation)
+    return AnnotationOut.model_validate(annotation)
+
+
+@annotations_router.put("/{annotation_id}", response_model=AnnotationOut)
+async def update_annotation(
+    annotation_id: int,
+    body: AnnotationUpdate,
+    session: AsyncSession = Depends(get_session),
+):
+    """Update an annotation's text or pin status."""
+    from fastapi import HTTPException
+    from app.models.observations import Annotation
+
+    result = await session.execute(select(Annotation).where(Annotation.id == annotation_id))
+    annotation = result.scalar_one_or_none()
+    if not annotation:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+
+    if body.text is not None:
+        annotation.text = body.text
+    if body.pinned is not None:
+        annotation.pinned = body.pinned
+    annotation.updated_at = datetime.utcnow()
+
+    await session.commit()
+    await session.refresh(annotation)
+    return AnnotationOut.model_validate(annotation)
+
+
+@annotations_router.delete("/{annotation_id}")
+async def delete_annotation(
+    annotation_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    """Delete an annotation."""
+    from fastapi import HTTPException
+    from app.models.observations import Annotation
+
+    result = await session.execute(select(Annotation).where(Annotation.id == annotation_id))
+    annotation = result.scalar_one_or_none()
+    if not annotation:
+        raise HTTPException(status_code=404, detail="Annotation not found")
+
+    await session.delete(annotation)
+    await session.commit()
+    return {"status": "deleted"}

@@ -143,24 +143,40 @@ async def _run_analysis_background(node_ids: list[str], trigger: str, app_state)
     from app.api.websocket import manager
     from app.db.connection import async_session
 
-    async with async_session() as session:
-        agent_run = await run_analysis(
-            node_ids=node_ids,
-            session=session,
-            graph=app_state.graph,
-            trigger=trigger,
-        )
-        # Notify WebSocket clients: analysis complete + updated graph
-        await manager.broadcast({
-            "type": "agent_complete",
-            "data": {
-                "id": agent_run.id,
-                "status": agent_run.status,
-                "summary": agent_run.summary,
-                "error": agent_run.error,
-            },
-        })
-        await _notify_graph_update(app_state)
+    try:
+        async with async_session() as session:
+            agent_run = await run_analysis(
+                node_ids=node_ids,
+                session=session,
+                graph=app_state.graph,
+                trigger=trigger,
+            )
+            # Notify WebSocket clients: analysis complete + updated graph
+            await manager.broadcast({
+                "type": "agent_complete",
+                "data": {
+                    "id": agent_run.id,
+                    "status": agent_run.status,
+                    "summary": agent_run.summary,
+                    "error": agent_run.error,
+                },
+            })
+            await _notify_graph_update(app_state)
+    except Exception as e:
+        logger.exception("Background analysis failed: %s", e)
+        # Still notify frontend so it doesn't get stuck
+        try:
+            await manager.broadcast({
+                "type": "agent_complete",
+                "data": {
+                    "id": 0,
+                    "status": "error",
+                    "summary": None,
+                    "error": str(e),
+                },
+            })
+        except Exception:
+            pass
 
 
 def _handle_notification_error(task: asyncio.Task) -> None:
@@ -196,6 +212,7 @@ class PredictionOut(BaseModel):
     resolved_at: datetime | None
     actual_sentiment: float | None
     hit: int | None
+    magnitude_score: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -205,6 +222,7 @@ class PredictionSummary(BaseModel):
     resolved: int
     pending: int
     hit_rate: float | None
+    mean_magnitude_score: float | None = None
     by_direction: dict
 
 
@@ -254,10 +272,14 @@ async def get_prediction_summary(
         elif p.hit == 0:
             by_direction[d]["misses"] += 1
 
+    mag_scores = [p.magnitude_score for p in resolved if p.magnitude_score is not None]
+    mean_mag = round(sum(mag_scores) / len(mag_scores), 4) if mag_scores else None
+
     return PredictionSummary(
         total=len(all_preds),
         resolved=len(resolved),
         pending=len(pending),
         hit_rate=round(hits / total_decided, 4) if total_decided > 0 else None,
+        mean_magnitude_score=mean_mag,
         by_direction=by_direction,
     )

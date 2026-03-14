@@ -83,8 +83,6 @@ export default function TimeSlider() {
   const handleClose = () => {
     setOpen(false);
     setPlaying(false);
-    setSliderValue(TOTAL_STEPS);
-    sliderValueRef.current = TOTAL_STEPS;
     clearSnapshot();
   };
 

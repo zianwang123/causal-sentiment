@@ -245,27 +245,29 @@ async def update_sentiment_signal(
     )
     session.add(obs)
 
-    # Update in-memory graph
-    if node_id in graph:
-        graph.nodes[node_id]["composite_sentiment"] = sentiment
-        graph.nodes[node_id]["confidence"] = confidence
+    # Update in-memory graph and run propagation under lock
+    from app.main import app_state
+    async with app_state.graph_lock:
+        if node_id in graph:
+            graph.nodes[node_id]["composite_sentiment"] = sentiment
+            graph.nodes[node_id]["confidence"] = confidence
 
-    # Run propagation (regime-aware)
-    from app.graph_engine.regimes import detect_regime
-    regime = detect_regime(graph)
-    prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
+        # Run propagation (regime-aware)
+        from app.graph_engine.regimes import detect_regime
+        regime = detect_regime(graph)
+        prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
 
-    # Update propagated nodes in DB
-    for target_id, impact in prop_result.impacts.items():
-        target_result = await session.execute(select(Node).where(Node.id == target_id))
-        target_node = target_result.scalar_one_or_none()
-        if target_node:
-            # Blend existing with propagated signal
-            blend = settings.propagation_blend_ratio
-            blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
-            target_node.composite_sentiment = clamp_sentiment(blended)
-            if target_id in graph:
-                graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
+        # Update propagated nodes in DB
+        for target_id, impact in prop_result.impacts.items():
+            target_result = await session.execute(select(Node).where(Node.id == target_id))
+            target_node = target_result.scalar_one_or_none()
+            if target_node:
+                # Blend existing with propagated signal
+                blend = settings.propagation_blend_ratio
+                blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
+                target_node.composite_sentiment = clamp_sentiment(blended)
+                if target_id in graph:
+                    graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
 
     await session.commit()
 
@@ -401,6 +403,25 @@ async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
     }, default=str)
 
 
+def _check_contradiction(
+    s1: float, s2: float, direction: str,
+) -> bool:
+    """Return True if sentiments contradict the expected edge direction.
+
+    Only flags when both sentiments have meaningful magnitude (|s| > 0.15)
+    and their signs disagree with the causal direction.
+    """
+    if abs(s1) < 0.15 or abs(s2) < 0.15:
+        return False  # At least one is too weak to judge
+    if direction == "positive":
+        # Positive edge: expect same sign
+        return (s1 > 0) != (s2 > 0)
+    elif direction == "negative":
+        # Negative edge: expect opposite signs
+        return (s1 > 0) == (s2 > 0)
+    return False
+
+
 async def validate_consistency(
     node_ids: list[str],
     session: AsyncSession,
@@ -427,27 +448,15 @@ async def validate_consistency(
             if hasattr(direction, "value"):
                 direction = direction.value
 
-            # Check alignment
-            if direction == "positive":
-                # Same direction expected
-                if node_sentiment * target_sentiment < -0.04:  # Opposite signs, both non-trivial
-                    contradictions.append({
-                        "type": "direction_mismatch",
-                        "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                        "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
-                        "edge_direction": direction,
-                        "explanation": f"{node_label} ({node_sentiment:+.2f}) has POSITIVE edge to {target_label} ({target_sentiment:+.2f}), but they have opposite signs. Expected same direction.",
-                    })
-            elif direction == "negative":
-                # Opposite direction expected
-                if node_sentiment * target_sentiment > 0.04:  # Same signs, both non-trivial
-                    contradictions.append({
-                        "type": "direction_mismatch",
-                        "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                        "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
-                        "edge_direction": direction,
-                        "explanation": f"{node_label} ({node_sentiment:+.2f}) has NEGATIVE edge to {target_label} ({target_sentiment:+.2f}), but they have the same sign. Expected opposite direction.",
-                    })
+            if _check_contradiction(node_sentiment, target_sentiment, direction):
+                expected = "same" if direction == "positive" else "opposite"
+                contradictions.append({
+                    "type": "direction_mismatch",
+                    "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                    "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
+                    "edge_direction": direction,
+                    "explanation": f"{node_label} ({node_sentiment:+.2f}) has {direction.upper()} edge to {target_label} ({target_sentiment:+.2f}), but they have {expected} signs expected — contradiction detected.",
+                })
 
         # Check incoming edges too
         for source, _, edge_data in graph.in_edges(node_id, data=True):
@@ -460,24 +469,15 @@ async def validate_consistency(
             if hasattr(direction, "value"):
                 direction = direction.value
 
-            if direction == "positive":
-                if source_sentiment * node_sentiment < -0.04:
-                    contradictions.append({
-                        "type": "direction_mismatch",
-                        "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
-                        "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                        "edge_direction": direction,
-                        "explanation": f"{source_label} ({source_sentiment:+.2f}) has POSITIVE edge to {node_label} ({node_sentiment:+.2f}), but they have opposite signs.",
-                    })
-            elif direction == "negative":
-                if source_sentiment * node_sentiment > 0.04:
-                    contradictions.append({
-                        "type": "direction_mismatch",
-                        "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
-                        "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                        "edge_direction": direction,
-                        "explanation": f"{source_label} ({source_sentiment:+.2f}) has NEGATIVE edge to {node_label} ({node_sentiment:+.2f}), but they have the same sign.",
-                    })
+            if _check_contradiction(source_sentiment, node_sentiment, direction):
+                expected = "same" if direction == "positive" else "opposite"
+                contradictions.append({
+                    "type": "direction_mismatch",
+                    "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
+                    "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                    "edge_direction": direction,
+                    "explanation": f"{source_label} ({source_sentiment:+.2f}) has {direction.upper()} edge to {node_label} ({node_sentiment:+.2f}), {expected} signs expected — contradiction detected.",
+                })
 
     # Deduplicate by source-target pair
     seen = set()

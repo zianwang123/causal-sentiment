@@ -1,8 +1,8 @@
 # Causal Sentiment Engine
 
-A causal factor graph + agentic sentiment engine for quant finance, drawing from ideas in Bridgewater's systematic macro approach. The system models the financial world as an interconnected directed graph where nodes are financial instruments and macro/micro factors, and edges represent causal relationships. An AI agent autonomously fetches real-world data, performs multi-source sentiment analysis, and propagates impact signals through this causal network — all visualized as an interactive 3D force-directed graph in the browser.
+**A second brain for macro analysts.** See the financial world as an interconnected causal graph. Ask "what if oil crashes?" and watch the shock cascade through energy, inflation, rates, and equities in real time. Pin your own reasoning to nodes. Let an AI agent do the data-gathering grunt work. The graph remembers what you think, not just what the data says.
 
-> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
+> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors and bugs, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
 
 > **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
 
@@ -15,6 +15,29 @@ A causal factor graph + agentic sentiment engine for quant finance, drawing from
 Traditional sentiment analysis tools treat assets in isolation — analyzing one stock, one headline, one data point at a time. But financial markets are deeply interconnected: a Fed rate decision affects Treasury yields, which affects credit spreads, which affects corporate bonds, which affects equity valuations, and so on. These cascading causal relationships are what macro investors like Bridgewater model systematically.
 
 This project attempts to capture that interconnectedness in a causal graph and make it tangible through 3D visualization. Instead of reading a sentiment score for the S&P 500 in a vacuum, you can see how a change in CPI expectations propagates through monetary policy, into interest rates, through credit markets, and ultimately into equity indices — with the AI agent doing the heavy lifting of data gathering and analysis.
+
+Most macro analysts hold this causal model in their heads, but it's implicit, fragile, and hard to stress-test. This project makes it **explicit, visual, and machine-augmented**.
+
+### The core idea: shock propagation as a thinking tool
+
+The graph isn't just a pretty visualization — it's a reasoning framework. When you shock a node (say, oil sentiment drops to -0.8), the impact doesn't just affect oil. It **propagates** through the causal network:
+
+- **Some nodes get hit hard** — energy stocks take a direct hit (1 hop, high weight)
+- **Some nodes feel it indirectly** — inflation expectations shift, which nudges rate expectations, which affects equities (3 hops, decayed)
+- **Some nodes actually benefit** — airlines and consumers gain from lower energy costs (negative causal edge = inverse relationship)
+- **Some nodes barely notice** — geopolitical risk index is causally distant, impact decays to near-zero
+
+This is exactly how a macro strategist thinks about positioning: "if X happens, what gets hurt, what benefits, and what's uncorrelated?" The graph makes that reasoning visible and testable. You can brainstorm hedges, find second-order effects you hadn't considered, and spot which causal channels are currently hot vs. muted.
+
+### What it does
+
+- **52 nodes** (macro factors, rates, commodities, equities, currencies) connected by **117 directed causal edges** — the graph structure IS the domain knowledge
+- **What-if simulator** — drag a node to a hypothetical sentiment and watch the shock cascade through the graph. See which nodes get crushed, which benefit, which are unaffected.
+- **AI agent** — Claude or GPT fetches real data (FRED, yfinance, news, Reddit, SEC), analyzes it, and writes sentiment through a three-phase reasoning loop (Plan → Analyze → Validate)
+- **Analyst annotations** — pin your own notes to nodes. "I think this CPI reading is transitory because of base effects." The tool remembers your reasoning across sessions.
+- **Regime narrator** — not just "risk-off 0.7" but a story: "Shifted risk-off 3 days ago, driven by credit spread widening. Watch for 10Y breaking 4.5%."
+
+Not a trading signal. A reasoning tool for anyone who thinks about macro causation.
 
 ---
 
@@ -131,35 +154,38 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
 
 ## Features
 
-### Core
+### The Graph
 - **52-node causal factor graph** covering 11 categories: macro, monetary policy, geopolitics, rates & credit, volatility, commodities, equities, equity fundamentals, currencies, flows & sentiment, and global
 - **117 directed causal edges** with expert-defined base weights + dynamically-adapted weights from empirical correlations
-- **Agentic analysis** — Claude or GPT autonomously fetches data and updates sentiment using a multi-round tool-use loop
-- **Signal propagation** — sentiment changes cascade through the causal graph with exponential decay and regime awareness
+- **3D interactive visualization** — WebGL-powered, sentiment-colored nodes (red = bearish, green = bullish), sized by centrality, with directional particles showing causal flow
+- **Signal propagation** — sentiment changes cascade through the graph with exponential decay, regime awareness, and constructive/destructive interference
 
-### Visualization
-- **3D interactive force-directed graph** — WebGL-powered visualization with sentiment-colored nodes (red = bearish, green = bullish), sized by centrality, with directional particles showing causal flow
-- **Node shapes** — spheres (factors), cubes (products), octahedra (policy)
-- **Clustered layout** — toggle to spatially group nodes by category
-- **Anomaly highlighting** — nodes with 2-sigma moves glow yellow and appear 1.5x larger
-- **Time travel slider** — replay the graph state over the past 7 days with 1-hour resolution and auto-play
+### What-If Simulator
+- **Shock propagation** — drag a slider to set hypothetical sentiment on any node, click Simulate
+- **Cascade visualization** — affected nodes glow green/red by impact direction, source node pulses orange, unaffected nodes dim out
+- **Impact particles** — affected edges light up orange with 6x particles at 3x speed, showing the transmission path
+- **Impact report** — bottom panel showing every affected node: magnitude, hop count, full causal path. Click any node to fly the camera there.
 
-### Analysis
-- **Market regime detection** — automatic Risk-On / Risk-Off / Transitioning classification
-- **Anomaly detection** — z-score based (2-sigma threshold), auto-triggers agent analysis
-- **Dynamic weight learning** — edge weights updated daily from 90-day Pearson correlations
-- **LLM topology suggestions** — the AI can suggest new causal edges based on empirical data patterns
-- **Backtesting** — measure sentiment prediction accuracy vs actual returns (hit rate, correlation, information coefficient)
+### Second Brain
+- **Analyst annotations** — pin timestamped notes to any node ("I think this CPI print is transitory"). Persist in the database across sessions. Pin important notes, delete stale ones.
+- **Regime narrator** — click the regime badge, generate an LLM-written macro narrative: "Shifted risk-off 2 days ago, driven by HY spread widening. Watch for 10Y breaking 4.5%." Top driver chips fly camera to the relevant node.
+
+### AI Agent
+- **Three-phase reasoning loop** — Plan → Analyze → Validate (25 rounds). Not a single prompt — a structured multi-step process with self-critique.
+- **11 tools** — FRED, yfinance, NewsAPI, Reddit, SEC EDGAR, graph inspection, sentiment writing, consistency checks, prediction tracking
+- **Self-calibration** — tracks prediction accuracy (direction + magnitude), adjusts confidence based on its own track record
+- **Market regime detection** — automatic Risk-On / Risk-Off / Transitioning classification from 8 bellwether indicators
 
 ### Dashboard
-- **Node detail panel** — sentiment score, confidence, anomaly alerts, causal edges with weight breakdown (base/dynamic/effective), evidence with source attribution, sentiment history chart, deep dive
-- **Node locator** — searchable panel listing all 52 nodes grouped by category, with confidence and sentiment sorting — click to fly the camera to any node
+- **Node detail panel** — sentiment, confidence, what-if slider, analyst notes, anomaly alert, causal edges with weight breakdown, sentiment chart, evidence, deep dive
+- **Node locator** — searchable panel listing all 52 nodes grouped by category, click to fly the camera to any node
 - **Sentiment history charts** — TradingView Lightweight Charts with 7d/30d/90d range buttons
 - **Agent audit log** — expandable cards showing status, duration, tool calls, analyzed nodes
-- **Real-time progress bar** — live round-by-round progress via WebSocket during analysis
-- **Predictions panel** — color-coded prediction tracker (green=hit, red=miss, yellow=pending) with hit rate summary and countdown timers
-- **Evidence source attribution** — each sentiment assessment tagged with data sources (FRED, Yahoo Finance, NewsAPI, Reddit, SEC EDGAR)
+- **Predictions panel** — color-coded prediction tracker (green=hit, red=miss, yellow=pending) with hit rate and magnitude scoring
+- **Time travel slider** — replay the graph state over the past 7 days with 1-hour resolution
 - **Portfolio overlay** — add your positions, see them highlighted on the graph
+- **Anomaly highlighting** — nodes with 2-sigma moves glow yellow and appear 1.5x larger
+- **LLM topology suggestions** — AI suggests new causal edges from correlation anomalies
 
 ---
 
@@ -232,21 +258,38 @@ The AI agent uses a **three-phase reasoning loop** — Plan, Analyze, Validate �
    REDDIT_CLIENT_SECRET=
    ```
 
-4. Start everything:
+4. First-time install:
+   ```bash
+   ./setup.sh
+   ```
+
+5. Start everything:
+   ```bash
+   ./start.sh
+   ```
+
+6. Open **http://localhost:3000** — everything runs locally on your machine, no remote server required. Click **Run Full Analysis** to trigger the first agent run.
+
+7. To shut down:
+   ```bash
+   ./stop.sh
+   ```
+
+   Alternatively, run the full stack via Docker:
    ```bash
    docker compose up --build
    ```
-
-5. Open **http://localhost:3000** — everything runs locally on your machine, no remote server required. and click **Run Full Analysis** to trigger the first agent run.
 
 ### Usage
 
 | Action | How |
 |--------|-----|
+| **Simulate a shock** | Click a node → drag the "What-If Shock" slider → click "Simulate" → watch the cascade |
+| **Add a note** | Click a node → scroll to "Analyst Notes" → type your reasoning → click "Add" |
+| **Read regime narrative** | Click the regime badge (top-left, e.g. "TRANSITIONING") → it expands → click "Generate Narrative" (requires API key in `.env`) |
 | **Run analysis** | Click "Run Full Analysis" in the top-left panel (all 52 nodes) |
-| **Inspect a node** | Click any node in the 3D graph to open the detail panel |
-| **Deep dive** | Click "Deep Dive" in the node panel for focused single-node analysis |
-| **Find a node** | Open "Nodes" in the bottom toolbar — search, sort by confidence/sentiment, click to fly to it |
+| **Deep dive** | Click a node → click "Deep Dive" for focused single-node analysis |
+| **Find a node** | Open "Nodes" in the bottom toolbar — search, sort, click to fly to it |
 | **Switch LLM** | Toggle GPT/Claude in the top-left panel |
 | **Time travel** | Open "Time Travel" in the bottom toolbar — drag slider to replay past 7 days |
 | **Cluster layout** | Toggle "Clustered" in the top-left panel to group nodes by category |
@@ -327,9 +370,10 @@ causal-sentiment/
 │   │   │   ├── news.py                # NewsAPI client
 │   │   │   ├── reddit.py              # Reddit via asyncpraw (3 subreddits)
 │   │   │   ├── edgar.py               # SEC EDGAR client
+│   │   │   ├── retry.py              # Exponential backoff retry (3 attempts)
 │   │   │   └── scheduler.py           # APScheduler (7 jobs, disabled by default)
 │   │   ├── api/
-│   │   │   ├── routes_graph.py        # Graph CRUD + snapshot + anomalies + clusters
+│   │   │   ├── routes_graph.py        # Graph CRUD + simulate + annotations + regime narrative
 │   │   │   ├── routes_agent.py        # Agent trigger + LLM config
 │   │   │   ├── routes_portfolio.py    # Portfolio CRUD
 │   │   │   └── websocket.py           # Real-time push (WebSocket manager)
@@ -337,7 +381,7 @@ causal-sentiment/
 │   │   │   └── connection.py          # Async SQLAlchemy + asyncpg
 │   │   └── models/
 │   │       ├── graph.py               # Node + Edge SQLAlchemy models
-│   │       └── observations.py        # Sentiment, regime, portfolio, prediction models
+│   │       └── observations.py        # Sentiment, regime, portfolio, prediction, annotation models
 │   ├── tests/                         # 30 tests (propagation, correlations, anomalies)
 │   ├── requirements.txt
 │   └── Dockerfile
@@ -345,9 +389,10 @@ causal-sentiment/
 │   └── src/
 │       ├── app/page.tsx               # Main dashboard layout
 │       ├── components/
-│       │   ├── Graph3D.tsx            # 3D force-directed graph (WebGL)
-│       │   ├── NodePanel.tsx          # Node detail sidebar
-│       │   ├── FilterBar.tsx          # Controls + regime + LLM toggle
+│       │   ├── Graph3D.tsx            # 3D force-directed graph (WebGL) + simulation overlay
+│       │   ├── NodePanel.tsx          # Node detail + what-if slider + analyst notes
+│       │   ├── SimulationPanel.tsx    # What-if impact report
+│       │   ├── FilterBar.tsx          # Controls + regime narrator + LLM toggle
 │       │   ├── SentimentChart.tsx     # TradingView time-series chart
 │       │   ├── BacktestChart.tsx      # Sentiment vs return scatter plot
 │       │   ├── SentimentTimeline.tsx  # Top movers bar
@@ -368,6 +413,9 @@ causal-sentiment/
 │       │   └── config.ts              # API/WS URL config
 │       └── types/
 │           └── graph.ts               # TypeScript interfaces
+├── setup.sh                           # First-time setup (installs everything)
+├── start.sh                           # Start all services (DB, backend, frontend)
+├── stop.sh                            # Stop everything
 ├── .github/workflows/ci.yml           # CI: backend tests + frontend typecheck
 ├── docker-compose.yml                 # PostgreSQL + TimescaleDB + Redis + Backend
 └── .env.example                       # Environment variable template
@@ -395,6 +443,12 @@ causal-sentiment/
 | GET | `/api/agent/predictions/summary` | Prediction stats: hit rate, by-direction breakdown |
 | GET | `/api/agent/llm-config` | Current LLM provider and model |
 | POST | `/api/agent/llm-config` | Switch LLM provider |
+| POST | `/api/graph/simulate` | What-if shock propagation (read-only) |
+| POST | `/api/graph/regime/narrative` | LLM-generated regime narrative |
+| GET | `/api/annotations?node_id=...` | List analyst annotations |
+| POST | `/api/annotations` | Create annotation |
+| PUT | `/api/annotations/{id}` | Update annotation |
+| DELETE | `/api/annotations/{id}` | Delete annotation |
 | POST | `/api/portfolio/positions` | Add portfolio positions |
 | GET | `/api/portfolio/positions` | Get portfolio positions |
 | WS | `/ws` | Real-time graph updates (sentiment, progress, regime) |
@@ -434,13 +488,18 @@ A: Correlation is symmetric and undirected — it tells you two things move toge
 - [x] Agent memory — cross-run context (previous analyses + track record injected into prompts)
 - [x] Scheduler toggle — all background jobs disabled by default (`SCHEDULER_ENABLED=false`)
 - [x] CI/CD pipeline — GitHub Actions (pytest + TypeScript typecheck)
-- [ ] Multi-agent architecture — specialist agents (macro, market, sentiment) + synthesizer
-- [ ] Hypothesis-driven analysis — agent generates and tests falsifiable hypotheses
-- [ ] More data sources (Bloomberg, options flow, FOMC minutes NLP, earnings call transcripts)
+- [x] Validation threshold fix — sign-flip detection with 0.15 magnitude filter
+- [x] Edge muting — correlation disagreement mutes edges instead of permanently flipping direction
+- [x] Data pipeline retry logic — exponential backoff for FRED and yfinance
+- [x] Prediction magnitude scoring — track closeness, not just direction
+- [x] Regime context refresh — fresh regime injected at each agent phase transition
+- [x] What-if shock simulator — inject hypothetical sentiment, watch cascade propagation with impact report
+- [x] Analyst annotations — persistent per-node notes with pin/unpin
+- [x] Regime narrator — LLM-generated macro narrative with clickable driver chips
+- [ ] Morning brief — daily summary of moves, predictions, regime changes
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)
-- [ ] Multi-user support with auth
 
 ---
 

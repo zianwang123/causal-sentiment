@@ -28,7 +28,12 @@ export default function FilterBar() {
   const toggleClustered = useGraphStore((s) => s.toggleClustered);
   const regime = useGraphStore((s) => s.regime);
   const fetchRegime = useGraphStore((s) => s.fetchRegime);
+  const focusNode = useGraphStore((s) => s.focusNode);
   const [llmConfig, setLlmConfig] = useState<LLMConfig | null>(null);
+  const [narrative, setNarrative] = useState<string | null>(null);
+  const [narrativeDrivers, setNarrativeDrivers] = useState<string[]>([]);
+  const [narrativeOpen, setNarrativeOpen] = useState(false);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
 
   const fetchLLMConfig = useCallback(() => {
     fetch(`${API}/api/agent/llm-config`)
@@ -65,13 +70,67 @@ export default function FilterBar() {
         </h2>
 
         {regime && regimeStyle && (
-          <div className={`mb-2 px-2.5 py-1.5 rounded border ${regimeStyle.bg}`}>
-            <div className={`text-xs font-bold ${regimeStyle.text}`}>
-              {regimeStyle.label}
-            </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">
-              Confidence: {(regime.confidence * 100).toFixed(0)}% · Score: {regime.composite_score > 0 ? "+" : ""}{regime.composite_score.toFixed(3)}
-            </div>
+          <div className={`mb-2 rounded border ${regimeStyle.bg}`}>
+            <button
+              onClick={() => setNarrativeOpen(!narrativeOpen)}
+              className="w-full text-left px-2.5 py-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <div className={`text-xs font-bold ${regimeStyle.text}`}>
+                  {regimeStyle.label}
+                </div>
+                <span className="text-[10px] text-gray-500">
+                  {narrativeOpen ? "\u25B2" : "\u25BC"}
+                </span>
+              </div>
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                Confidence: {(regime.confidence * 100).toFixed(0)}% · Score: {regime.composite_score > 0 ? "+" : ""}{regime.composite_score.toFixed(3)}
+              </div>
+            </button>
+            {narrativeOpen && (
+              <div className="px-2.5 pb-2 border-t border-gray-700/50 mt-1 pt-1.5">
+                {narrative ? (
+                  <>
+                    <p className="text-[11px] text-gray-300 leading-relaxed">{narrative}</p>
+                    {narrativeDrivers.length > 0 && (
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        {narrativeDrivers.map((d) => (
+                          <button
+                            key={d}
+                            onClick={(e) => { e.stopPropagation(); focusNode(d); }}
+                            className="text-[9px] bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded px-1.5 py-0.5 transition-colors"
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-[10px] text-gray-500 italic">
+                    {narrativeLoading ? "Generating narrative..." : "Click below to generate narrative"}
+                  </p>
+                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNarrativeLoading(true);
+                    fetch(`${API}/api/graph/regime/narrative`, { method: "POST" })
+                      .then((r) => r.json())
+                      .then((data) => {
+                        setNarrative(data.narrative);
+                        setNarrativeDrivers(data.top_drivers || []);
+                      })
+                      .catch(() => setNarrative("Failed to generate narrative."))
+                      .finally(() => setNarrativeLoading(false));
+                  }}
+                  disabled={narrativeLoading}
+                  className="mt-1.5 text-[10px] text-gray-500 hover:text-gray-300 disabled:text-gray-600 underline"
+                >
+                  {narrativeLoading ? "Generating..." : narrative ? "Refresh" : "Generate Narrative"}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

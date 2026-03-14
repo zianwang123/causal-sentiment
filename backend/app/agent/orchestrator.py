@@ -53,6 +53,24 @@ def _get_phase(round_num: int) -> str:
         return "validation"
 
 
+def _build_regime_context(graph: nx.DiGraph) -> str:
+    """Detect current market regime and return a context string."""
+    from app.graph_engine.regimes import detect_regime
+    regime = detect_regime(graph)
+    guidance = ""
+    if regime.state.value == "risk_off":
+        guidance = "In risk-off regimes, weight defensive signals more heavily and be more cautious on bullish calls."
+    elif regime.state.value == "risk_on":
+        guidance = "In risk-on regimes, bullish momentum tends to persist — look for confirmation signals."
+    return (
+        f"\n\n## Current Market Regime\n"
+        f"**{regime.state.value.upper().replace('_', ' ')}** (confidence: {regime.confidence:.0%}, "
+        f"composite: {regime.composite_score:+.3f})\n"
+        f"Contributing signals: {', '.join(f'{k}={v:+.2f}' for k, v in regime.contributing_signals.items())}\n"
+        f"{guidance}"
+    )
+
+
 async def run_analysis(
     node_ids: list[str],
     session: AsyncSession,
@@ -87,17 +105,8 @@ async def run_analysis(
     session.add(agent_run)
     await session.commit()
 
-    # Detect current regime and inject into system prompt
-    from app.graph_engine.regimes import detect_regime
-    regime = detect_regime(graph)
-    regime_context = (
-        f"\n\n## Current Market Regime\n"
-        f"**{regime.state.value.upper().replace('_', ' ')}** (confidence: {regime.confidence:.0%}, "
-        f"composite: {regime.composite_score:+.3f})\n"
-        f"Contributing signals: {', '.join(f'{k}={v:+.2f}' for k, v in regime.contributing_signals.items())}\n"
-        f"{'In risk-off regimes, weight defensive signals more heavily and be more cautious on bullish calls.' if regime.state.value == 'risk_off' else ''}"
-        f"{'In risk-on regimes, bullish momentum tends to persist — look for confirmation signals.' if regime.state.value == 'risk_on' else ''}"
-    )
+    # Build system prompt with initial regime context
+    regime_context = _build_regime_context(graph)
     system_prompt = SYSTEM_PROMPT + regime_context
 
     # ── AGENT MEMORY: previous runs + track record ────────────────
@@ -147,9 +156,10 @@ async def run_analysis(
             messages = append_tool_results(messages, llm_response.tool_calls, results)
             _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
 
-        # Transition to analysis: inject the analysis prompt
+        # Transition to analysis: refresh regime context and inject analysis prompt
+        fresh_regime = _build_regime_context(graph)
         analysis_prompt = ANALYSIS_PROMPT_TEMPLATE.format(node_ids=", ".join(node_ids))
-        messages.append({"role": "user", "content": analysis_prompt})
+        messages.append({"role": "user", "content": f"[Regime update]{fresh_regime}\n\n{analysis_prompt}"})
 
         # ── PHASE 2: ANALYSIS ──────────────────────────────────────────
         for round_num in range(PLANNING_ROUNDS, PLANNING_ROUNDS + ANALYSIS_ROUNDS):
@@ -181,10 +191,11 @@ async def run_analysis(
 
         # ── PHASE 3: VALIDATION ────────────────────────────────────────
         if nodes_updated:
+            fresh_regime = _build_regime_context(graph)
             validation_prompt = VALIDATION_PROMPT.format(
                 nodes_updated=", ".join(dict.fromkeys(nodes_updated)),  # unique, ordered
             )
-            messages.append({"role": "user", "content": validation_prompt})
+            messages.append({"role": "user", "content": f"[Regime update]{fresh_regime}\n\n{validation_prompt}"})
 
             for round_num in range(PLANNING_ROUNDS + ANALYSIS_ROUNDS, MAX_ROUNDS):
                 phase = "validation"
@@ -217,10 +228,12 @@ async def run_analysis(
 
     except Exception as e:
         logger.exception("Agent run failed")
+        await session.rollback()
         agent_run.status = "error"
         agent_run.error = str(e)
         agent_run.tool_calls = tool_calls_log
         agent_run.finished_at = datetime.utcnow()
+        session.add(agent_run)
 
     await session.commit()
     return agent_run

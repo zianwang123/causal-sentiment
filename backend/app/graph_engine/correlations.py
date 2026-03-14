@@ -148,6 +148,10 @@ async def update_dynamic_weights(
     base_ratio = settings.edge_weight_base_ratio
     updated = 0
     flipped = 0
+
+    # Collect graph mutations to apply under lock
+    graph_updates: list[tuple[str, str, float, float]] = []
+
     for edge in edges:
         corr = correlations.get((edge.source_id, edge.target_id))
         if corr is None:
@@ -156,50 +160,48 @@ async def update_dynamic_weights(
         # Dynamic weight is correlation magnitude, clamped to [0.0, 1.0]
         new_dynamic_weight = min(1.0, max(0.0, abs(corr)))
 
-        # Check if correlation sign disagrees with edge direction
-        new_direction = edge.direction
+        # If correlation sign disagrees with declared direction, mute the edge
+        # instead of flipping — preserves domain knowledge from topology.py
         if edge.direction != EdgeDirection.COMPLEX:
             expected_positive = edge.direction == EdgeDirection.POSITIVE
-            if expected_positive and corr < -direction_flip_threshold:
-                new_direction = EdgeDirection.NEGATIVE
+            correlation_disagrees = (
+                (expected_positive and corr < -direction_flip_threshold) or
+                (not expected_positive and corr > direction_flip_threshold)
+            )
+            if correlation_disagrees:
+                new_dynamic_weight = 0.05  # Near-zero: effectively muted
                 flipped += 1
                 logger.warning(
-                    "Direction flip: %s → %s (was POSITIVE, corr=%.3f)",
-                    edge.source_id, edge.target_id, corr,
-                )
-            elif not expected_positive and corr > direction_flip_threshold:
-                new_direction = EdgeDirection.POSITIVE
-                flipped += 1
-                logger.warning(
-                    "Direction flip: %s → %s (was NEGATIVE, corr=%.3f)",
-                    edge.source_id, edge.target_id, corr,
+                    "Edge muted (correlation disagrees with direction): %s → %s "
+                    "(direction=%s, corr=%.3f, dynamic_weight → 0.05)",
+                    edge.source_id, edge.target_id, edge.direction.value, corr,
                 )
 
         # Only update if meaningfully different (avoid unnecessary DB writes)
         weight_changed = abs(new_dynamic_weight - edge.dynamic_weight) >= 0.01
-        direction_changed = new_direction != edge.direction
 
-        if not weight_changed and not direction_changed:
+        if not weight_changed:
             continue
 
         edge.dynamic_weight = new_dynamic_weight
-        if direction_changed:
-            edge.direction = new_direction
         updated += 1
 
-        # Update in-memory graph edge
-        if graph.has_edge(edge.source_id, edge.target_id):
-            edge_data = graph[edge.source_id][edge.target_id]
-            edge_data["dynamic_weight"] = new_dynamic_weight
-            edge_data["effective_weight"] = (
-                base_ratio * edge.base_weight + (1 - base_ratio) * new_dynamic_weight
-            )
-            if direction_changed:
-                edge_data["direction"] = new_direction
+        effective = base_ratio * edge.base_weight + (1 - base_ratio) * new_dynamic_weight
+        graph_updates.append((edge.source_id, edge.target_id, new_dynamic_weight, effective))
+
+    # Apply in-memory graph updates under lock
+    if graph_updates:
+        from app.main import app_state
+        async with app_state.graph_lock:
+            for src, tgt, dw, ew in graph_updates:
+                if graph.has_edge(src, tgt):
+                    edge_data = graph[src][tgt]
+                    edge_data["dynamic_weight"] = dw
+                    edge_data["effective_weight"] = ew
 
     await session.commit()
     logger.info(
-        "Dynamic weights updated: %d edges (%d direction flips) from %d correlations",
+        "Dynamic weights updated: %d edges (%d muted for disagreement) from %d correlations",
         updated,
         flipped,
         len(correlations),

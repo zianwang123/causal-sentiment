@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .graph import Base
@@ -73,6 +73,7 @@ class Prediction(Base):
     resolved_at = Column(DateTime, nullable=True)
     actual_sentiment = Column(Float, nullable=True)
     hit = Column(Integer, nullable=True)  # 1 = correct direction, 0 = wrong, NULL = unresolved
+    magnitude_score = Column(Float, nullable=True)  # 0.0–1.0: how close predicted sentiment was to actual
 
 
 class AgentRun(Base):
@@ -87,3 +88,14 @@ class AgentRun(Base):
     started_at = Column(DateTime, default=func.now())
     finished_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
+
+
+class Annotation(Base):
+    __tablename__ = "annotations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    node_id = Column(String(64), ForeignKey("nodes.id"), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    pinned = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
