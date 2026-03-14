@@ -84,6 +84,36 @@ export interface AnomalyInfo {
   detected_at: string;
 }
 
+// What-if simulation
+export interface SimulationImpact {
+  node_id: string;
+  label: string;
+  impact: number;
+  path: string[];
+  hops: number;
+}
+
+export interface SimulationResult {
+  source_node: string;
+  source_label: string;
+  initial_signal: number;
+  current_sentiment: number;
+  shock_delta: number;
+  regime: string;
+  impacts: SimulationImpact[];
+  total_nodes_affected: number;
+}
+
+// Analyst annotations
+export interface Annotation {
+  id: number;
+  node_id: string;
+  text: string;
+  pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type NodeTypeShape = "sphere" | "cube" | "octahedron";
 
 export const NODE_TYPE_SHAPES: Record<string, NodeTypeShape> = {

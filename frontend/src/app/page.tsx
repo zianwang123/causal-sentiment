@@ -12,6 +12,7 @@ import PortfolioPanel from "@/components/PortfolioPanel";
 import TopologySuggestions from "@/components/TopologySuggestions";
 import UserGuide from "@/components/UserGuide";
 import NodeLocator from "@/components/NodeLocator";
+import SimulationPanel from "@/components/SimulationPanel";
 import { useGraphStore, useGraphWebSocket } from "@/hooks/useGraphData";
 
 export default function Home() {
@@ -46,6 +47,7 @@ export default function Home() {
       <FilterBar />
       <NodePanel />
       <UserGuide />
+      <SimulationPanel />
       <SentimentTimeline />
 
       {/* Bottom toolbar: centered */}

@@ -126,8 +126,8 @@ def _mock_session_with_edges(edges):
 
 
 @pytest.mark.asyncio
-async def test_direction_flip_on_sign_disagreement():
-    """POSITIVE edge with strong negative correlation should flip to NEGATIVE."""
+async def test_edge_muted_on_sign_disagreement():
+    """POSITIVE edge with strong negative correlation should be muted, not flipped."""
     edge = _make_mock_edge("A", "B", EdgeDirection.POSITIVE, 0.5, 0.5)
     session = _mock_session_with_edges([edge])
     graph, _ = _mock_graph_for_edge("A", "B")
@@ -137,7 +137,9 @@ async def test_direction_flip_on_sign_disagreement():
         updated = await update_dynamic_weights(session, graph, direction_flip_threshold=0.3)
 
     assert updated == 1
-    assert edge.direction == EdgeDirection.NEGATIVE
+    # Direction preserved (domain knowledge), but edge muted via low dynamic weight
+    assert edge.direction == EdgeDirection.POSITIVE
+    assert edge.dynamic_weight == pytest.approx(0.05)
 
 
 @pytest.mark.asyncio
@@ -170,8 +172,8 @@ async def test_complex_direction_never_flips():
 
 
 @pytest.mark.asyncio
-async def test_negative_edge_flips_to_positive():
-    """NEGATIVE edge with strong positive correlation should flip to POSITIVE."""
+async def test_negative_edge_muted_on_positive_correlation():
+    """NEGATIVE edge with strong positive correlation should be muted, not flipped."""
     edge = _make_mock_edge("A", "B", EdgeDirection.NEGATIVE, 0.5, 0.5)
     session = _mock_session_with_edges([edge])
     graph, _ = _mock_graph_for_edge("A", "B")
@@ -180,4 +182,6 @@ async def test_negative_edge_flips_to_positive():
         mock_corr.return_value = {("A", "B"): 0.85}
         await update_dynamic_weights(session, graph, direction_flip_threshold=0.3)
 
-    assert edge.direction == EdgeDirection.POSITIVE
+    # Direction preserved, edge muted
+    assert edge.direction == EdgeDirection.NEGATIVE
+    assert edge.dynamic_weight == pytest.approx(0.05)

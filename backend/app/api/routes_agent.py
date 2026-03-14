@@ -196,6 +196,7 @@ class PredictionOut(BaseModel):
     resolved_at: datetime | None
     actual_sentiment: float | None
     hit: int | None
+    magnitude_score: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -205,6 +206,7 @@ class PredictionSummary(BaseModel):
     resolved: int
     pending: int
     hit_rate: float | None
+    mean_magnitude_score: float | None = None
     by_direction: dict
 
 
@@ -254,10 +256,14 @@ async def get_prediction_summary(
         elif p.hit == 0:
             by_direction[d]["misses"] += 1
 
+    mag_scores = [p.magnitude_score for p in resolved if p.magnitude_score is not None]
+    mean_mag = round(sum(mag_scores) / len(mag_scores), 4) if mag_scores else None
+
     return PredictionSummary(
         total=len(all_preds),
         resolved=len(resolved),
         pending=len(pending),
         hit_rate=round(hits / total_decided, 4) if total_decided > 0 else None,
+        mean_magnitude_score=mean_mag,
         by_direction=by_direction,
     )

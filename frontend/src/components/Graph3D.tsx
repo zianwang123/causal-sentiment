@@ -40,10 +40,35 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const { handleNodeClick } = useNodeSelection();
   const graphRef = useRef<any>(null);
 
+  const simulation = useGraphStore((s) => s.simulation);
+
   const anomalyNodeIds = useMemo(
     () => new Set(anomalies.map((a) => a.node_id)),
     [anomalies]
   );
+
+  // Build simulation impact lookup: node_id → impact magnitude
+  const simImpactMap = useMemo(() => {
+    if (!simulation) return null;
+    const map = new Map<string, number>();
+    map.set(simulation.source_node, simulation.shock_delta);
+    for (const imp of simulation.impacts) {
+      map.set(imp.node_id, imp.impact);
+    }
+    return map;
+  }, [simulation]);
+
+  // Build set of edges on affected paths
+  const simAffectedEdges = useMemo(() => {
+    if (!simulation) return null;
+    const edges = new Set<string>();
+    for (const imp of simulation.impacts) {
+      for (let i = 0; i < imp.path.length - 1; i++) {
+        edges.add(`${imp.path[i]}__${imp.path[i + 1]}`);
+      }
+    }
+    return edges;
+  }, [simulation]);
 
   const portfolioSet = useMemo(
     () => new Set(portfolioNodeIds),
@@ -139,27 +164,79 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           const inPortfolio = portfolioSet.has(node.id);
           let label = `${inPortfolio ? "★ " : ""}${node.label}\nSentiment: ${node.sentiment?.toFixed(2) ?? "N/A"}`;
           if (anomaly) label += `\n⚠ Anomaly: ${anomaly.z_score > 0 ? "+" : ""}${anomaly.z_score.toFixed(1)}σ`;
+          if (simImpactMap?.has(node.id)) {
+            const impact = simImpactMap.get(node.id)!;
+            label += `\n⚡ Impact: ${impact >= 0 ? "+" : ""}${impact.toFixed(3)}`;
+          }
           return label;
         }}
         nodeColor={(node: any) => {
+          // Simulation mode: orange for affected, dim for unaffected
+          if (simImpactMap) {
+            if (simulation?.source_node === node.id) return "#f97316"; // Orange: shock source
+            if (simImpactMap.has(node.id)) {
+              const impact = simImpactMap.get(node.id)!;
+              return impact > 0 ? "#4ade80" : "#f87171"; // Green/red based on impact direction
+            }
+            return "#374151"; // Dim gray for unaffected
+          }
           if (portfolioSet.has(node.id)) return "#f59e0b"; // Amber for portfolio
           if (anomalyNodeIds.has(node.id)) return "#facc15"; // Yellow for anomaly
           return sentimentToColor(node.sentiment ?? 0);
         }}
         nodeVal={(node: any) => {
           const base = Math.max(2, (node.centrality ?? 0.02) * 100);
+          if (simImpactMap) {
+            if (simulation?.source_node === node.id) return base * 2; // Source node is large
+            if (simImpactMap.has(node.id)) {
+              const absImpact = Math.abs(simImpactMap.get(node.id)!);
+              return base * (1 + absImpact * 2); // Scale by impact magnitude
+            }
+            return base * 0.5; // Shrink unaffected
+          }
           return anomalyNodeIds.has(node.id) ? base * 1.5 : base;
         }}
         nodeOpacity={0.9}
         linkSource="source"
         linkTarget="target"
-        linkColor={(link: any) => edgeDirectionColor(link.direction)}
-        linkWidth={(link: any) => Math.max(0.5, (link.weight ?? 0.5) * 3)}
-        linkDirectionalParticles={2}
+        linkColor={(link: any) => {
+          if (simAffectedEdges) {
+            const src = typeof link.source === "string" ? link.source : link.source?.id;
+            const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+            if (simAffectedEdges.has(`${src}__${tgt}`)) return "#f97316"; // Orange for affected
+            return "#1f2937"; // Very dim for unaffected
+          }
+          return edgeDirectionColor(link.direction);
+        }}
+        linkWidth={(link: any) => {
+          if (simAffectedEdges) {
+            const src = typeof link.source === "string" ? link.source : link.source?.id;
+            const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+            if (simAffectedEdges.has(`${src}__${tgt}`)) return 2.5;
+            return 0.3;
+          }
+          return Math.max(0.5, (link.weight ?? 0.5) * 3);
+        }}
+        linkDirectionalParticles={(link: any) => {
+          if (simAffectedEdges) {
+            const src = typeof link.source === "string" ? link.source : link.source?.id;
+            const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+            if (simAffectedEdges.has(`${src}__${tgt}`)) return 6;
+            return 0;
+          }
+          return 2;
+        }}
         linkDirectionalParticleWidth={(link: any) =>
           Math.max(0.5, (link.weight ?? 0.5) * 2)
         }
-        linkDirectionalParticleSpeed={0.005}
+        linkDirectionalParticleSpeed={(link: any) => {
+          if (simAffectedEdges) {
+            const src = typeof link.source === "string" ? link.source : link.source?.id;
+            const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+            if (simAffectedEdges.has(`${src}__${tgt}`)) return 0.015; // Faster on affected paths
+          }
+          return 0.005;
+        }}
         onNodeClick={handleClick}
         backgroundColor="#030712"
         showNavInfo={false}

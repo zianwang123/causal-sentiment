@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.api.routes_agent import router as agent_router
-from app.api.routes_graph import router as graph_router
+from app.api.routes_graph import router as graph_router, annotations_router
 from app.api.routes_portfolio import router as portfolio_router
 from app.api.websocket import websocket_endpoint
 from app.db.connection import async_session, engine
@@ -135,6 +135,7 @@ app.add_middleware(
 app.include_router(graph_router)
 app.include_router(agent_router)
 app.include_router(portfolio_router)
+app.include_router(annotations_router)
 app.add_api_websocket_route("/ws", websocket_endpoint)
 
 

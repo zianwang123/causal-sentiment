@@ -70,6 +70,12 @@ async def resolve_expired_predictions(session: AsyncSession) -> int:
         else:
             pred.hit = None
 
+        # Magnitude accuracy: how close was the predicted sentiment to actual?
+        # Score 1.0 = perfect match, 0.0 = off by ≥1.0 (max possible in [-1, 1])
+        if pred.predicted_sentiment is not None:
+            error = abs(pred.predicted_sentiment - actual)
+            pred.magnitude_score = round(max(0.0, 1.0 - error), 3)
+
         resolved_count += 1
 
     if resolved_count > 0:
