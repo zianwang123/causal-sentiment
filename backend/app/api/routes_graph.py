@@ -648,6 +648,29 @@ async def generate_regime_narrative(
     )
 
 
+# ── MANUAL WEIGHT RECALCULATION ───────────────────────────────────────
+
+
+class WeightUpdateResult(BaseModel):
+    edges_updated: int
+    message: str
+
+
+@router.post("/weights/recalculate", response_model=WeightUpdateResult)
+async def recalculate_weights(session: AsyncSession = Depends(get_session)):
+    """Manually trigger dynamic weight recalculation from empirical correlations."""
+    from app.graph_engine.correlations import update_dynamic_weights
+    from app.main import app_state
+
+    updated = await update_dynamic_weights(session, app_state.graph)
+    return WeightUpdateResult(
+        edges_updated=updated,
+        message=f"Recalculated dynamic weights: {updated} edges updated from 90-day correlations."
+        if updated > 0
+        else "No edges updated — insufficient observation data. Run more analyses first.",
+    )
+
+
 # ── WHAT-IF SHOCK SIMULATOR ──────────────────────────────────────────
 
 class SimulateRequest(BaseModel):

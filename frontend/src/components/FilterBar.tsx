@@ -34,6 +34,8 @@ export default function FilterBar() {
   const [narrativeDrivers, setNarrativeDrivers] = useState<string[]>([]);
   const [narrativeOpen, setNarrativeOpen] = useState(false);
   const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [weightsLoading, setWeightsLoading] = useState(false);
+  const [weightsResult, setWeightsResult] = useState<string | null>(null);
 
   const fetchLLMConfig = useCallback(() => {
     fetch(`${API}/api/agent/llm-config`)
@@ -63,7 +65,7 @@ export default function FilterBar() {
   const regimeStyle = regime ? REGIME_STYLES[regime.state] || REGIME_STYLES.transitioning : null;
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex flex-col gap-3">
+    <div className="absolute top-4 left-4 z-10 flex flex-col gap-3 w-60">
       <div className="bg-gray-900/95 backdrop-blur border border-gray-700 rounded-lg p-3">
         <h2 className="text-white text-sm font-semibold mb-2">
           Causal Sentiment Engine
@@ -180,6 +182,24 @@ export default function FilterBar() {
         >
           {clustered ? "Clustered Layout" : "Free Layout"}
         </button>
+        <button
+          onClick={() => {
+            setWeightsLoading(true);
+            setWeightsResult(null);
+            fetch(`${API}/api/graph/weights/recalculate`, { method: "POST" })
+              .then((r) => r.json())
+              .then((data) => setWeightsResult(`${data.edges_updated} edges updated`))
+              .catch(() => setWeightsResult("Failed"))
+              .finally(() => setWeightsLoading(false));
+          }}
+          disabled={weightsLoading}
+          className="w-full mt-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-300 text-sm py-2 px-3 rounded transition-colors"
+        >
+          {weightsLoading ? "Recalculating..." : "Recalculate Weights"}
+        </button>
+        {weightsResult && (
+          <div className="text-[10px] text-gray-400 mt-0.5">{weightsResult}</div>
+        )}
         {llmConfig && (
           <div className="mt-2">
             <div className="text-[10px] text-gray-500 uppercase mb-1">LLM Provider</div>
