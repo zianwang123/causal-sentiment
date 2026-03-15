@@ -109,17 +109,20 @@ export default function BacktestChart({ nodeId }: { nodeId: string }) {
       const sumY = ys.reduce((a, b) => a + b, 0);
       const sumXY = points.reduce((a, p) => a + p[0] * p[1], 0);
       const sumX2 = xs.reduce((a, x) => a + x * x, 0);
-      const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-      const intercept = (sumY - slope * sumX) / n;
+      const denom = n * sumX2 - sumX * sumX;
+      if (denom !== 0 && Number.isFinite(denom)) {
+        const slope = (n * sumXY - sumX * sumY) / denom;
+        const intercept = (sumY - slope * sumX) / n;
 
-      ctx.strokeStyle = "#60a5fa";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(toX(xMin), toY(slope * xMin + intercept));
-      ctx.lineTo(toX(xMax), toY(slope * xMax + intercept));
-      ctx.stroke();
-      ctx.setLineDash([]);
+        ctx.strokeStyle = "#60a5fa";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(toX(xMin), toY(slope * xMin + intercept));
+        ctx.lineTo(toX(xMax), toY(slope * xMax + intercept));
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }, [data]);
 

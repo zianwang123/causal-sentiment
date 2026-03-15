@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator as pydantic_field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -518,6 +518,10 @@ async def accept_suggestion(
         effective_weight=suggestion.suggested_weight,
     )
 
+    # Invalidate centrality cache since topology changed
+    from app.graph_engine.weights import invalidate_centrality_cache
+    invalidate_centrality_cache()
+
     return {"status": "accepted", "edge_id": new_edge.id}
 
 
@@ -730,6 +734,13 @@ class AnnotationCreate(BaseModel):
     node_id: str
     text: str
     pinned: bool = False
+
+    @pydantic_field_validator("text")
+    @classmethod
+    def text_not_too_long(cls, v: str) -> str:
+        if len(v) > 10000:
+            raise ValueError("Annotation text must be 10,000 characters or fewer")
+        return v
 
 
 class AnnotationUpdate(BaseModel):

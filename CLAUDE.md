@@ -54,7 +54,7 @@ causal-sentiment/
         anomalies.py           # Z-score anomaly detection on node observations (2σ threshold)
         predictions.py         # Prediction resolution — compare agent predictions against actual outcomes
       data_pipeline/
-        fred.py                # FRED API client (13 macro series)
+        fred.py                # FRED API client (14 macro series)
         market.py              # yfinance client (13 tickers mapped to nodes)
         retry.py               # Exponential backoff retry utility (3 attempts)
         reddit.py              # Reddit pipeline (asyncpraw, keyword→node mapping, 3 subreddits)

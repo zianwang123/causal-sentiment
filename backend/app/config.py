@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     newsapi_key: str = ""
     sec_edgar_user_agent: str = ""
 
-    llm_provider: str = "anthropic"  # "anthropic" or "openai"
+    llm_provider: str = "openai"  # "anthropic" or "openai"
     anthropic_model: str = "claude-sonnet-4-20250514"
     openai_model: str = "gpt-4o"
 

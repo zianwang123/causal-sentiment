@@ -22,7 +22,12 @@
 14. [Database Schema](#14-database-schema)
 15. [API Reference](#15-api-reference)
 16. [Configuration Reference](#16-configuration-reference)
-17. [FAQ & Design Rationale](#17-faq--design-rationale)
+17. [Concurrency Model](#17-concurrency-model)
+18. [Edge Discovery & Topology Learning](#18-edge-discovery--topology-learning)
+19. [Data Freshness & Latency](#19-data-freshness--latency)
+20. [Portfolio Overlay](#20-portfolio-overlay)
+21. [Backtesting](#21-backtesting)
+22. [FAQ & Design Rationale](#22-faq--design-rationale)
 
 ---
 
@@ -557,9 +562,12 @@ The agent fetches data and writes sentiment. For each node it analyzes:
 
 ### Agent Memory
 
-Between runs, the agent receives:
-- **Previous 3 run summaries** (truncated to 300 chars each) with time-since labels
-- **Prediction track record** (hit rate, recent outcomes, calibration warning if <50%)
+Between runs, the agent receives context injected directly into the **system prompt** (built by `_build_memory_context()` in `orchestrator.py`):
+
+- **Previous 3 run summaries** (truncated to 300 chars each) with time-since labels (e.g., "2h ago", "1d ago") — appended as a `## Previous Analyses` section in the system prompt
+- **Prediction track record** (hit rate, recent outcomes, calibration warning if <50%) — appended as a `## Your Track Record` section
+
+This is not stored in a separate memory system — it's queried from the database at the start of each agent run and concatenated to the system prompt. The agent sees its own history as part of its instructions, enabling self-calibration without external memory infrastructure.
 
 ### 11 Tools
 
@@ -587,7 +595,7 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 
 | Job | Frequency | What It Does |
 |-----|-----------|--------------|
-| FRED fetch | Every 4 hours | Fetches 13 macro series, stores as raw observations |
+| FRED fetch | Every 4 hours | Fetches 14 macro series, stores as raw observations |
 | Market fetch | Every 1 hour | Fetches 13 tickers via yfinance |
 | Reddit fetch | Every 2 hours | Fetches from r/wallstreetbets, r/economics, r/stocks |
 | SEC EDGAR fetch | Daily at 6 AM UTC | Fetches financials for 10 tracked companies |
@@ -777,6 +785,8 @@ The `sqrt()` makes low sentiments more visible — without it, a sentiment of 0.
 base = max(2, centrality × 100)
 ```
 
+Centrality is computed using **eigenvector centrality** (`nx.eigenvector_centrality_numpy` with `weight="effective_weight"`), which measures a node's influence — a node is important if it connects to other important nodes. Falls back to degree centrality for disconnected graphs. Cached with a 300-second TTL to avoid recomputation on every request.
+
 Centrality ranges [0, 1], so node size ranges [2, 100]. Higher centrality = bigger node = more connected/important.
 
 ### Cluster Layout
@@ -879,6 +889,8 @@ All timestamps are stored as `TIMESTAMP WITHOUT TIME ZONE` in UTC. Code uses `da
 
 ### WebSocket
 
+Connect to `ws://localhost:8000/ws`. Events are JSON objects with `type` and `data` fields.
+
 | Event | Direction | Data |
 |-------|-----------|------|
 | `graph_update` | Server → Client | Full graph state |
@@ -887,6 +899,37 @@ All timestamps are stored as `TIMESTAMP WITHOUT TIME ZONE` in UTC. Code uses `da
 | `regime_update` | Server → Client | Regime state, confidence |
 | `ping` | Client → Server | Heartbeat |
 | `pong` | Server → Client | Heartbeat response |
+
+**Example payloads:**
+
+```json
+// agent_progress
+{"type": "agent_progress", "data": {
+  "round": 5, "max_rounds": 25, "phase": "analysis",
+  "tool_calls": ["fetch_fred_data", "fetch_market_prices"],
+  "total_tool_calls": 12
+}}
+
+// agent_complete
+{"type": "agent_complete", "data": {
+  "run_id": 42, "status": "completed",
+  "nodes_analyzed": ["sp500", "vix", "fed_funds_rate"],
+  "summary": "Analyzed 3 nodes. SPY showing bullish momentum..."
+}}
+
+// regime_update
+{"type": "regime_update", "data": {
+  "state": "risk_off", "confidence": 0.72,
+  "composite_score": -0.36,
+  "contributing_signals": {"vix": 0.45, "hy_credit_spread": 0.3, "sp500": -0.2}
+}}
+
+// graph_update (sent after agent completes)
+{"type": "graph_update", "data": {
+  "nodes": [{"id": "sp500", "composite_sentiment": 0.35, "confidence": 0.8, ...}],
+  "edges": [...]
+}}
+```
 
 ---
 
@@ -922,7 +965,143 @@ All settings in `backend/app/config.py`, read from `.env`:
 
 ---
 
-## 17. FAQ & Design Rationale
+## 17. Concurrency Model
+
+### Graph Lock
+
+All mutations to the in-memory NetworkX graph (`app_state.graph`) are protected by an `asyncio.Lock` (`app_state.graph_lock`). This prevents race conditions between:
+- Concurrent agent runs writing sentiment and running propagation
+- Scheduler jobs updating edge weights or applying sentiment decay
+- API requests reading graph state
+
+The lock is acquired in:
+- `update_sentiment_signal()` — wraps both propagation and in-memory graph writes
+- `scheduled_sentiment_decay()` — wraps bulk node sentiment updates
+- Any topology mutation (adding edges from suggestions)
+
+### Contention Pattern
+
+Contention is low in practice: agent runs take seconds per tool call (LLM latency dominates), scheduler jobs run every 1-6 hours, and API reads are non-locking. The main risk is a long propagation blocking a concurrent agent tool call, but propagation over 52 nodes with max 4 hops is sub-millisecond.
+
+### Session Lifecycle
+
+- **API requests:** Sessions are created per-request via FastAPI's `Depends(get_session)` and automatically closed
+- **Scheduler jobs:** Each job creates its own session via `async with async_session() as session:` — these run outside the FastAPI request lifecycle
+- **Agent runs:** A single session spans the entire run (up to 25 rounds). On error, the session is rolled back and the error state is persisted in a clean commit
+
+---
+
+## 18. Edge Discovery & Topology Learning
+
+### How It Works
+
+The system can suggest new causal edges by combining statistical analysis with LLM reasoning:
+
+1. **Correlation scanning** (`find_correlated_unconnected_pairs` in `topology_learning.py`): Computes Pearson correlations between all node pairs that are NOT currently connected. Pairs with |correlation| > threshold are candidates.
+
+2. **LLM evaluation** (`suggest_edges_with_llm`): The LLM evaluates each candidate pair and decides whether the correlation reflects a plausible causal mechanism or is spurious. It provides:
+   - Suggested direction (POSITIVE / NEGATIVE / COMPLEX)
+   - Suggested weight
+   - Reasoning explaining the causal mechanism
+
+3. **Human review**: Suggestions are stored as `EdgeSuggestion` records with status "pending". The UI ("Evolve Graph" panel, `TopologySuggestions.tsx`) shows suggestions for the user to accept or reject.
+
+4. **Acceptance**: Accepting a suggestion creates a real `Edge` in the database and adds it to the in-memory graph.
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/graph/topology/suggest` | Trigger edge discovery scan |
+| GET | `/api/graph/topology/suggestions?status=pending` | List pending suggestions |
+| POST | `/api/graph/topology/suggestions/{id}/accept` | Accept a suggestion |
+| POST | `/api/graph/topology/suggestions/{id}/reject` | Reject a suggestion |
+
+### Requirements
+
+Nodes need at least 3 sentiment observations each for correlation analysis. Running more agent analyses across different time windows builds the observation history needed for edge discovery.
+
+---
+
+## 19. Data Freshness & Latency
+
+### Source Latency
+
+| Source | Typical Latency | Notes |
+|--------|----------------|-------|
+| FRED | Days to weeks | Most series update monthly (CPI, GDP, unemployment) or weekly (rates). Data represents the *reporting date*, not real-time |
+| yfinance | 15-minute delay (free tier) | End-of-day prices are reliable; intraday is delayed. Markets closed on weekends/holidays |
+| NewsAPI | Minutes | Headlines are near real-time but limited to 100 requests/day on free tier |
+| Reddit | Minutes to hours | Post scores and comments lag the actual post time |
+| SEC EDGAR | Days | Filings appear 1-2 days after submission |
+
+### System Latency
+
+- **Data fetch → anomaly check → agent trigger:** Seconds (limited by API response times)
+- **Agent analysis → WebSocket push:** 1-5 minutes (dominated by LLM response time across 10-25 tool-use rounds)
+- **Propagation:** Sub-millisecond for 52 nodes, max 4 hops
+
+### Implications for Users
+
+This system is designed for **macro analysis on daily-to-weekly timescales**. It is NOT a real-time trading signal. FRED data may be weeks old when the agent analyzes it. The value is in the causal reasoning and cross-node consistency, not in speed.
+
+---
+
+## 20. Portfolio Overlay
+
+### What It Does
+
+Users can register portfolio positions (ticker, shares, entry price) via the API. When positions are registered:
+- The agent receives portfolio context in its system prompt: "User Portfolio: AAPL (100 shares @ $150.00), ..." — and is instructed to flag signals particularly relevant to these holdings
+- Portfolio-linked nodes are highlighted amber in the 3D graph
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/portfolio` | List portfolio positions |
+| POST | `/api/portfolio` | Add a position |
+| DELETE | `/api/portfolio/{id}` | Remove a position |
+
+### Limitations
+
+Portfolio overlay is informational only — it does not compute P&L, risk metrics, or hedging suggestions. It simply focuses the agent's attention on nodes relevant to your holdings.
+
+---
+
+## 21. Backtesting
+
+### How It Works
+
+The backtesting system measures the predictive power of sentiment signals by comparing historical sentiment observations against subsequent market returns.
+
+For a given node:
+1. Fetch all agent sentiment observations from the lookback window (default: 90 days)
+2. For each observation, fetch the market price change over the forward window (default: 5 days)
+3. Compute metrics:
+   - **Hit rate:** % of times sentiment direction (positive/negative) predicted return direction correctly
+   - **Correlation:** Pearson correlation between sentiment scores and forward returns
+   - **Information Coefficient (IC):** Rank correlation between sentiment and returns
+   - **Average return by direction:** Mean forward return when sentiment was bullish vs bearish
+   - **Scatter plot data:** (sentiment, forward_return) pairs for visualization
+
+### Frontend
+
+`BacktestChart.tsx` renders a scatter plot of sentiment vs. forward returns with:
+- Green dots: correct direction (bullish sentiment + positive return, or bearish + negative)
+- Red dots: wrong direction
+- Dashed blue trend line (linear regression)
+
+### API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/graph/backtest/{node_id}?lookback_days=90&forward_days=5` | Backtest a single node |
+| GET | `/api/graph/backtest/summary?lookback_days=90&forward_days=5` | Backtest all nodes |
+
+---
+
+## 22. FAQ & Design Rationale
 
 **Q: Why not just use a correlation matrix?**
 Correlation is symmetric and undirected. This graph has directed causal edges — "rising CPI → higher rate expectations → lower equities" is a chain with direction, sign, and magnitude. Correlation can't capture that.
