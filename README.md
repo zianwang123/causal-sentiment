@@ -6,6 +6,8 @@
 
 > **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
 
+**[Technical Manual](docs/TECHNICAL_MANUAL.md)** — deep dive into every algorithm, formula, and design decision (propagation, regime detection, agent architecture, edge weights, and more).
+
 ![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/yourusername/causal-sentiment/actions/workflows/ci.yml/badge.svg)
 
 ---
