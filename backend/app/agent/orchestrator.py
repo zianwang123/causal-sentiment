@@ -150,7 +150,7 @@ async def run_analysis(
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                 tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                result = await _execute_tool(tc.name, tc.input, session, graph)
+                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
                 results[tc.id] = result
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
@@ -179,7 +179,7 @@ async def run_analysis(
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                 tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                result = await _execute_tool(tc.name, tc.input, session, graph)
+                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
                 results[tc.id] = result
 
                 # Track nodes that get sentiment updates
@@ -216,7 +216,7 @@ async def run_analysis(
                 for tc in llm_response.tool_calls:
                     logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                     tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                    result = await _execute_tool(tc.name, tc.input, session, graph)
+                    result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
                     results[tc.id] = result
 
                 messages = append_tool_results(messages, llm_response.tool_calls, results)
@@ -228,12 +228,21 @@ async def run_analysis(
 
     except Exception as e:
         logger.exception("Agent run failed")
-        await session.rollback()
-        agent_run.status = "error"
-        agent_run.error = str(e)
-        agent_run.tool_calls = tool_calls_log
-        agent_run.finished_at = datetime.utcnow()
-        session.add(agent_run)
+        try:
+            await session.rollback()
+        except Exception:
+            pass
+        # Re-fetch agent_run in clean session state to persist error
+        try:
+            agent_run.status = "error"
+            agent_run.error = str(e)[:2000]
+            agent_run.tool_calls = tool_calls_log
+            agent_run.finished_at = datetime.utcnow()
+            session.add(agent_run)
+            await session.commit()
+        except Exception as commit_err:
+            logger.error("Failed to persist agent error state: %s", commit_err)
+            return agent_run
 
     await session.commit()
     return agent_run
@@ -267,6 +276,7 @@ async def _execute_tool(
     tool_input: dict,
     session: AsyncSession,
     graph: nx.DiGraph,
+    agent_run_id: int | None = None,
 ) -> str:
     """Dispatch a tool call to the appropriate implementation."""
     if tool_name == "fetch_fred_data":
@@ -339,6 +349,7 @@ async def _execute_tool(
             session=session,
             graph=graph,
             horizon_hours=tool_input.get("horizon_hours", 168),
+            agent_run_id=agent_run_id,
         )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})

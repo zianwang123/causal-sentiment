@@ -44,6 +44,12 @@ export default function PortfolioPanel({
       .catch(() => {});
   }, [onPortfolioNodes]);
 
+  // Fetch on mount so portfolio nodes are highlighted immediately
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
+  // Also refresh when panel is opened
   useEffect(() => {
     if (open) fetchSummary();
   }, [open, fetchSummary]);

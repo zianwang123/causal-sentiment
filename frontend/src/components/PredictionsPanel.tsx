@@ -61,6 +61,14 @@ export default function PredictionsPanel() {
     }
   }, [agentRunning, open]);
 
+  // Tick every 60s to keep countdown labels fresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(interval);
+  }, [open]);
+
   const timeRemaining = (createdAt: string, horizonHours: number) => {
     const created = parseUTCTimestamp(createdAt).getTime();
     const expiry = created + horizonHours * 3600 * 1000;

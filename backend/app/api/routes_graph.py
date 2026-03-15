@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator as pydantic_field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -518,6 +518,10 @@ async def accept_suggestion(
         effective_weight=suggestion.suggested_weight,
     )
 
+    # Invalidate centrality cache since topology changed
+    from app.graph_engine.weights import invalidate_centrality_cache
+    invalidate_centrality_cache()
+
     return {"status": "accepted", "edge_id": new_edge.id}
 
 
@@ -644,6 +648,29 @@ async def generate_regime_narrative(
     )
 
 
+# ── MANUAL WEIGHT RECALCULATION ───────────────────────────────────────
+
+
+class WeightUpdateResult(BaseModel):
+    edges_updated: int
+    message: str
+
+
+@router.post("/weights/recalculate", response_model=WeightUpdateResult)
+async def recalculate_weights(session: AsyncSession = Depends(get_session)):
+    """Manually trigger dynamic weight recalculation from empirical correlations."""
+    from app.graph_engine.correlations import update_dynamic_weights
+    from app.main import app_state
+
+    updated = await update_dynamic_weights(session, app_state.graph)
+    return WeightUpdateResult(
+        edges_updated=updated,
+        message=f"Recalculated dynamic weights: {updated} edges updated from 90-day correlations."
+        if updated > 0
+        else "No edges updated — insufficient observation data. Run more analyses first.",
+    )
+
+
 # ── WHAT-IF SHOCK SIMULATOR ──────────────────────────────────────────
 
 class SimulateRequest(BaseModel):
@@ -730,6 +757,13 @@ class AnnotationCreate(BaseModel):
     node_id: str
     text: str
     pinned: bool = False
+
+    @pydantic_field_validator("text")
+    @classmethod
+    def text_not_too_long(cls, v: str) -> str:
+        if len(v) > 10000:
+            raise ValueError("Annotation text must be 10,000 characters or fewer")
+        return v
 
 
 class AnnotationUpdate(BaseModel):

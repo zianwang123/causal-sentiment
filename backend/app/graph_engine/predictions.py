@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.observations import Prediction, SentimentObservation
@@ -37,13 +37,18 @@ async def resolve_expired_predictions(session: AsyncSession) -> int:
         if horizon_end > now:
             continue  # Not expired yet
 
-        # Get latest agent sentiment observation for this node near/after horizon
+        # Get latest sentiment observation for this node near/after horizon
+        # Check agent observations first, fall back to market/FRED data
+        source_priority = case(
+            (SentimentObservation.source.in_(["agent", "deep_dive"]), 0),
+            else_=1,
+        )
         obs_result = await session.execute(
             select(SentimentObservation)
             .where(SentimentObservation.node_id == pred.node_id)
-            .where(SentimentObservation.source.in_(["agent", "deep_dive"]))
+            .where(SentimentObservation.source.in_(["agent", "deep_dive", "market_scheduled", "fred_scheduled"]))
             .where(SentimentObservation.created_at >= pred.created_at)
-            .order_by(SentimentObservation.created_at.desc())
+            .order_by(source_priority, SentimentObservation.created_at.desc())
             .limit(1)
         )
         obs = obs_result.scalar_one_or_none()

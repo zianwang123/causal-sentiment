@@ -82,7 +82,11 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     return () => clearInterval(interval);
   }, [fetchAnomalies]);
 
-  // Apply clustering force when mode changes
+  // Store nodes ref for cluster force callback (avoids reheating on data-only changes)
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  // Apply clustering force only when clustered mode toggles
   useEffect(() => {
     if (!graphRef.current) return;
     const fg = graphRef.current;
@@ -91,7 +95,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       // Add a custom force that pulls nodes toward their cluster centroid
       fg.d3Force("cluster", (alpha: number) => {
         const strength = alpha * 0.3;
-        for (const node of nodes) {
+        for (const node of nodesRef.current) {
           const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
           const n = node as any;
           if (n.x !== undefined) {
@@ -106,7 +110,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       fg.d3Force("cluster", null);
     }
     fg.d3ReheatSimulation();
-  }, [clustered, nodes]);
+  }, [clustered]);
 
   // Handle focusNodeId from store (triggered by NodeLocator)
   useEffect(() => {

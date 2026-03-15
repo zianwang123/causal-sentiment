@@ -7,58 +7,63 @@ const sections = [
     id: "overview",
     title: "Overview",
     content:
-      "This tool models the financial world as an interconnected causal graph. Nodes represent financial products and macro factors. Edges represent causal relationships. An AI agent autonomously analyzes data and propagates sentiment signals through the network.",
+      "This tool models the financial world as an interconnected causal graph. 52 nodes represent financial products and macro factors. 117 directed edges represent causal relationships. An AI agent autonomously analyzes data and propagates sentiment signals through the network.",
   },
   {
     id: "sentiment",
-    title: "Sentiment & Confidence",
+    title: "Sentiment & Colors",
     content:
-      "Sentiment ranges from -1 (bearish) to +1 (bullish). Confidence (0\u2013100%) indicates how certain the agent is. Colors: red = bearish, gray = neutral, green = bullish. Node size reflects systemic importance (centrality).",
+      "Sentiment ranges from -1 (bearish) to +1 (bullish). Confidence (0\u2013100%) indicates how certain the agent is. Colors: red = bearish, gray = neutral, green = bullish. Node size reflects systemic importance (eigenvector centrality). Anomalous nodes (2\u03c3 moves) glow yellow and appear 1.5\u00d7 larger.",
+  },
+  {
+    id: "whatif",
+    title: "What-If Simulator",
+    content:
+      "Click any node, drag the \"What-If Shock\" slider to a hypothetical sentiment, and click Simulate. The shock propagates through causal edges with exponential decay (30% per hop, max 4 hops). Affected nodes glow green (positive impact) or red (negative impact). The source node pulses orange. Unaffected nodes dim out. An impact report panel shows every affected node with magnitude, hop count, and the full causal path. Click any node in the report to fly the camera there. The simulation is read-only \u2014 it does not change the actual graph.",
   },
   {
     id: "deepdive",
-    title: "Deep Dive",
+    title: "Agent & Deep Dive",
     content:
-      'Click any node to see its detail panel. Click "Deep Dive" to trigger a focused Claude analysis on that specific node. The agent will fetch fresh data (FRED, news, market prices, SEC filings) and update the sentiment.',
+      "Click \"Run Full Analysis\" to analyze all 52 nodes, or click a node and hit \"Deep Dive\" for focused single-node analysis. The agent runs a three-phase loop: (1) Planning \u2014 inspects anomalies, stale nodes, and regime state to decide priorities. (2) Analysis \u2014 fetches data from FRED, yfinance, news, Reddit, and SEC, then writes sentiment with decomposed confidence. (3) Validation \u2014 checks for cross-node contradictions and records falsifiable predictions. Progress is shown in real-time via WebSocket.",
   },
   {
-    id: "propagation",
-    title: "Propagation",
+    id: "annotations",
+    title: "Analyst Notes",
     content:
-      "When sentiment updates on a node, the signal propagates through causal edges. Positive edges amplify the signal in the same direction. Negative edges invert it. Signal decays with each hop (max 4 hops). Edge weight controls propagation strength.",
+      "Click any node and scroll to \"Analyst Notes\" to add your own reasoning. Notes are timestamped and persist in the database across sessions and restarts. Pin important notes to keep them at the top. Delete stale notes when they no longer apply. This is the \"second brain\" feature \u2014 the tool remembers what you think, not just what the data says.",
   },
   {
     id: "regime",
-    title: "Market Regime",
+    title: "Regime & Narrator",
     content:
-      "The system classifies the market as Risk-On, Risk-Off, or Transitioning based on bellwether nodes (VIX, credit spreads, S&P 500, etc.). In Risk-Off, bearish signals propagate faster. In Risk-On, bullish signals propagate faster.",
+      "The system classifies the market as Risk-On, Risk-Off, or Transitioning based on 8 bellwether nodes (VIX, credit spreads, S&P 500, yield curve, gold, dollar, put/call ratio). In Risk-Off, bearish signals propagate faster. In Risk-On, bullish signals flow further. Click the regime badge in the top-left to expand it, then click \"Generate Narrative\" for an LLM-written macro summary. Top driver chips let you fly the camera to the relevant node.",
+  },
+  {
+    id: "predictions",
+    title: "Predictions",
+    content:
+      "The agent records 2\u20133 high-conviction predictions during each validation phase. Each prediction has a direction (bullish/bearish/neutral), a target sentiment, a time horizon (default 7 days), and reasoning. Expired predictions are auto-resolved by comparing against actual sentiment. Open the \"Predictions\" panel in the bottom toolbar to see pending predictions (yellow), hits (green), and misses (red), along with the overall hit rate and magnitude score.",
   },
   {
     id: "features",
-    title: "Features",
+    title: "More Features",
     items: [
-      { label: "Time Travel", desc: "Replay graph state over the past 7 days" },
-      {
-        label: "Clustered Layout",
-        desc: "Group nodes by type (macro, equities, commodities, etc.)",
-      },
-      {
-        label: "Portfolio",
-        desc: "Add your positions to highlight relevant nodes",
-      },
-      {
-        label: "Evolve Graph",
-        desc: "Claude suggests new causal edges based on empirical correlations",
-      },
-      {
-        label: "Agent Log",
-        desc: "View past analysis runs, tool calls, and summaries",
-      },
-      {
-        label: "Backtest",
-        desc: "See predictive power (hit rate, correlation) of sentiment vs returns",
-      },
+      { label: "Time Travel", desc: "Replay graph state over the past 7 days with 1-hour steps" },
+      { label: "Clustered Layout", desc: "Toggle to group nodes spatially by category" },
+      { label: "Portfolio", desc: "Add your positions to highlight relevant nodes on the graph" },
+      { label: "Evolve Graph", desc: "AI suggests new causal edges based on empirical correlations" },
+      { label: "Agent Log", desc: "Inspect past analysis runs with full tool call details" },
+      { label: "Backtest", desc: "See predictive power (hit rate, correlation) of sentiment vs returns" },
+      { label: "Node Locator", desc: "Search and sort all 52 nodes, click to fly the camera there" },
+      { label: "LLM Switch", desc: "Toggle between Claude and GPT in the top-left panel" },
     ],
+  },
+  {
+    id: "learnmore",
+    title: "Learn More",
+    content:
+      "For a deep dive into every algorithm, formula, and design decision, read the Technical Manual: docs/TECHNICAL_MANUAL.md in the project repository. It covers signal propagation, dynamic weight learning, anomaly detection, regime detection, agent architecture, prediction tracking, and more.",
   },
 ] as const;
 

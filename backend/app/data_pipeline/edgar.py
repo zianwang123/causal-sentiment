@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import httpx
 
@@ -42,8 +42,8 @@ async def fetch_recent_filings(
     days: int = 30,
 ) -> list[dict]:
     """Search EDGAR full-text search for recent filings."""
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
-    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    end_date = datetime.utcnow().strftime("%Y-%m-%d")
 
     url = "https://efts.sec.gov/LATEST/search-index"
     params = {
