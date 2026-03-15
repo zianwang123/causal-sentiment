@@ -1,35 +1,41 @@
 # Causal Sentiment Engine
 
-**A second brain for macro analysts.** See the financial world as an interconnected causal graph. Ask "what if oil crashes?" and watch the shock cascade through energy, inflation, rates, and equities in real time. Pin your own reasoning to nodes. Let an AI agent do the data-gathering grunt work. The graph remembers what you think, not just what the data says.
+**A second brain for macro analysis — built with AI doing most of the heavy lifting.**
 
-> **Disclaimer:** This is a prototype built for fun to bring an idea to life. It was built with the help of AI. The sentiment analysis results are experimental, may contain errors and bugs, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
+Financial markets are deeply interconnected. A Fed rate decision ripples through Treasury yields, credit spreads, corporate bonds, and equity valuations. Most analysts hold this causal map in their heads — implicit, fragile, and impossible to stress-test. What if we made it **explicit, visual, and interactive**?
 
-> **This project is a work in progress!** New ideas, feedback, and contributors are very welcome. If you have suggestions for new features, better data sources, improved propagation models, or anything else — feel free to open an issue or submit a PR. Let's build this together.
+Causal Sentiment Engine is a **3D interactive causal graph** with 52 macro nodes and 117 directed edges, powered by an AI agent that fetches real-time data, analyzes sentiment, and propagates impact through the network. Simulate "what if" shocks — drag oil sentiment to -0.8 and watch the cascade through energy, inflation, rates, and equities. Pin your own reasoning to nodes. The tool remembers what you think, not just what the data says.
 
-**[Technical Manual](docs/TECHNICAL_MANUAL.md)** — deep dive into every algorithm, formula, and design decision (propagation, regime detection, agent architecture, edge weights, and more).
+This entire full-stack application — Python backend, Next.js frontend, 3D WebGL visualization, PostgreSQL with TimescaleDB, WebSocket real-time sync, a multi-phase AI agent with 11 tools — was built with the help of [Claude Code](https://claude.ai/claude-code). The velocity of what's possible with AI-assisted development is staggering.
 
-![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/yourusername/causal-sentiment/actions/workflows/ci.yml/badge.svg)
+Is it perfect? Not even close. The agent's reasoning could be sharper. The clustering and sentiment propagation models are simplistic. There's a whole world of scenario analysis and market stress testing that could be layered on. This is a prototype — a proof of concept showing how AI + good visualization can expand how we think about macro causation.
+
+> **Disclaimer:** This is a prototype built for fun to bring an idea to life. The sentiment analysis results are experimental, may contain errors and bugs, and should **NOT** be used for actual trading or investment decisions. Use at your own risk.
+
+> **This project is a work in progress!** If you have ideas for new features, better propagation models, or want to contribute — let's push the boundaries of what AI-augmented analysis tools can look like. Open an issue or submit a PR.
+
+**[Technical Manual](docs/TECHNICAL_MANUAL.md)** — deep dive into every algorithm, formula, and design decision.
+
+![3D Graph Visualization](https://img.shields.io/badge/3D-Interactive_Graph-blue) ![Claude + GPT](https://img.shields.io/badge/LLM-Claude_%7C_GPT-orange) ![Docker](https://img.shields.io/badge/deploy-Docker_Compose-2496ED) ![CI](https://github.com/zianwang123/causal-sentiment/actions/workflows/ci.yml/badge.svg)
 
 ---
 
 ## Why This Exists
 
-Traditional sentiment analysis tools treat assets in isolation. But financial markets are deeply interconnected: a Fed rate decision affects Treasury yields, which affects credit spreads, which affects corporate bonds, which affects equity valuations. These cascading causal relationships are what macro investors model systematically.
+Traditional sentiment analysis tools treat assets in isolation — one stock, one headline, one data point at a time. But a change in CPI expectations propagates through monetary policy, into interest rates, through credit markets, and ultimately into equity indices. These cascading causal relationships are what macro investors like Bridgewater model systematically.
 
-This project captures that interconnectedness in a **directed causal graph** — 52 nodes, 117 edges — and makes it tangible through 3D visualization. Instead of reading a sentiment score for the S&P 500 in a vacuum, you can see how a change in CPI expectations propagates through monetary policy, into interest rates, through credit markets, and ultimately into equity indices.
-
-Most macro analysts hold this causal model in their heads, but it's implicit, fragile, and hard to stress-test. This project makes it **explicit, visual, and machine-augmented**.
+This project captures that interconnectedness in a **directed causal graph** and makes it tangible through 3D visualization. Most macro analysts hold this causal model in their heads. This project makes it **explicit, visual, and machine-augmented**.
 
 ### Shock propagation as a thinking tool
 
-When you shock a node (say, oil sentiment drops to -0.8), the impact **propagates** through the causal network:
+The graph isn't just a pretty visualization — it's a reasoning framework. When you shock a node (say, oil sentiment drops to -0.8), the impact **propagates** through the causal network:
 
 - **Direct hits** — energy stocks take an immediate hit (1 hop, high weight)
 - **Indirect effects** — inflation expectations shift → rate expectations → equities (3 hops, decayed)
 - **Inverse beneficiaries** — airlines and consumers gain from lower energy costs (negative causal edge)
 - **Uncorrelated nodes** — geopolitical risk is causally distant, impact decays to near-zero
 
-This is exactly how a macro strategist thinks about positioning. The graph makes that reasoning visible and testable.
+This is exactly how a macro strategist thinks about positioning: "if X happens, what gets hurt, what benefits, and what's uncorrelated?" The graph makes that reasoning visible and testable.
 
 ---
 
