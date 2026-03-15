@@ -27,7 +27,8 @@
 19. [Data Freshness & Latency](#19-data-freshness--latency)
 20. [Portfolio Overlay](#20-portfolio-overlay)
 21. [Backtesting](#21-backtesting)
-22. [FAQ & Design Rationale](#22-faq--design-rationale)
+22. [Limitations & Known Issues](#22-limitations--known-issues)
+23. [FAQ & Design Rationale](#23-faq--design-rationale)
 
 ---
 
@@ -107,7 +108,7 @@ Every edge has:
 
 ### Complete Edge List
 
-**Fed Funds Rate (6 outgoing edges):**
+**Fed Funds Rate (8 outgoing edges):**
 
 | Target | Dir | Weight | Why |
 |--------|-----|--------|-----|
@@ -789,9 +790,19 @@ Centrality is computed using **eigenvector centrality** (`nx.eigenvector_central
 
 Centrality ranges [0, 1], so node size ranges [2, 100]. Higher centrality = bigger node = more connected/important.
 
+### Node Positioning & Forces
+
+The 3D graph uses [d3-force-3d](https://github.com/vasturiano/d3-force-3d) (built into `react-force-graph-3d`) to determine node positions. Three forces act simultaneously:
+
+1. **Link force** — connected nodes attract each other like springs. Nodes sharing a causal edge end up closer together.
+2. **Charge force** — every node repels every other node, preventing overlap and spreading the graph out.
+3. **Center force** — gently pulls all nodes toward the origin so the graph doesn't drift off screen.
+
+Node positions are **not** manually set — they emerge from the force simulation reaching equilibrium. Nodes with more shared connections naturally cluster together. The edge weight does not currently affect link distance or spring stiffness (D3 defaults are used).
+
 ### Cluster Layout
 
-When enabled, nodes are pulled toward their category's centroid position using a custom D3 force:
+When the user toggles clustered mode, a **fourth custom force** is added that pulls each node toward a hardcoded centroid position based on its category:
 
 ```
 macro:              [  0,  150,   0]
@@ -807,7 +818,13 @@ flows_sentiment:    [150, -100,   0]
 global:             [-150,-100,   0]
 ```
 
-Force strength: `alpha × 0.3` (where alpha is D3's cooling parameter).
+**Centroid positions are manually chosen** to spread 11 categories roughly evenly across a 3D sphere of radius ~200 units. They do not reflect the number of cross-category edges or causal proximity — they are purely for visual separation.
+
+**Future improvement:** Centroid positions could be computed algorithmically from the graph topology — e.g., by counting cross-category edges and placing categories with more interconnections closer together, or by running a force simulation on the 11 category meta-nodes where link strength equals the number of edges between categories. This would make the spatial layout encode real causal structure rather than arbitrary coordinates.
+
+**Force strength:** `alpha × 0.3` (where alpha is D3's cooling parameter). This is soft enough that D3's link and charge forces still determine fine positioning within each cluster. Densely connected nodes within a category clump tighter; cross-cluster edges pull connected nodes slightly across cluster boundaries.
+
+**Final node position** is where all four forces reach equilibrium: cluster pull groups nodes by category, link force pulls connected neighbors closer, and charge repulsion spreads nodes within each group.
 
 ### WebSocket Heartbeat
 
@@ -941,7 +958,7 @@ All settings in `backend/app/config.py`, read from `.env`:
 |---------|---------|-------------|
 | `ANTHROPIC_API_KEY` | "" | Required for Claude agent |
 | `OPENAI_API_KEY` | "" | Required for GPT agent |
-| `LLM_PROVIDER` | "anthropic" | Which LLM to use |
+| `LLM_PROVIDER` | "openai" | Which LLM to use ("anthropic" or "openai") |
 | `ANTHROPIC_MODEL` | "claude-sonnet-4-20250514" | Claude model |
 | `OPENAI_MODEL` | "gpt-4o" | GPT model |
 | `SCHEDULER_ENABLED` | false | Enable background jobs |
@@ -1061,7 +1078,9 @@ Users can register portfolio positions (ticker, shares, entry price) via the API
 |--------|------|-------------|
 | GET | `/api/portfolio` | List portfolio positions |
 | POST | `/api/portfolio` | Add a position |
+| PUT | `/api/portfolio/{id}` | Update a position |
 | DELETE | `/api/portfolio/{id}` | Remove a position |
+| GET | `/api/portfolio/summary` | Portfolio summary with sentiment exposure |
 
 ### Limitations
 
@@ -1101,7 +1120,67 @@ For a given node:
 
 ---
 
-## 22. FAQ & Design Rationale
+## 22. Limitations & Known Issues
+
+This section documents the system's known limitations honestly — both theoretical and practical.
+
+### "Causal" Is Used Loosely
+
+The edges represent **directed correlational assumptions** grounded in macro finance domain knowledge, not rigorously identified causal relationships. There is no Granger causality testing, no instrumental variables, and no DAG validation. The edges encode "when A moves, B tends to move in this direction because of this mechanism" — which is how macro analysts actually think, but is not causal in the econometric sense.
+
+**Why this is acceptable:** The system is a reasoning tool, not a statistical proof. The edges represent well-known macro transmission channels (e.g., "higher rates → lower equity valuations") that have theoretical backing. The dynamic weight learning adapts these assumptions to empirical data, and edge muting handles cases where the empirical relationship temporarily breaks down.
+
+### One-Size-Fits-All Sentiment Decay
+
+All nodes use the same 24-hour half-life for sentiment decay. This is clearly wrong for nodes with different data frequencies:
+
+- **FRED macro data** (GDP, CPI, unemployment) updates monthly or quarterly — a 24h decay means the signal is nearly gone before the next data point arrives
+- **Market prices** (yfinance) update hourly — 24h decay is appropriate
+- **News sentiment** can be ephemeral — 24h may even be too long
+
+A better approach would be per-node-type decay rates, but this adds complexity. For now, the 24h half-life is a reasonable middle ground that prevents stale signals from dominating.
+
+### Pearson Correlation Assumptions
+
+Dynamic weight learning uses Pearson correlation, which assumes linear relationships. Financial relationships are often nonlinear (e.g., VIX has a convex relationship with SPY). Spearman rank correlation would be more robust to nonlinearity but would lose magnitude information.
+
+Additionally, `correlation_min_data_points = 3` is very low. With only 3 data points, a Pearson correlation is statistically unreliable. In practice, most node pairs accumulate more observations over time, but newly-deployed instances may produce noisy dynamic weights.
+
+### Signal Amplification Through Interference
+
+When a node is reachable by multiple paths, signals are summed (constructive interference). Two paths each contributing +0.6 produce a total impact of +1.0 (clamped). This means the graph can produce impact signals **stronger than the original shock** at convergence points. This is a deliberate design choice — it models how multiple causal channels can compound — but users should be aware that high-centrality nodes may show amplified signals.
+
+### Cold Start Problem
+
+On first deployment with no historical observations:
+- **Anomaly detection** requires minimum 5 observations per node — no anomalies will be detected until sufficient data is collected
+- **Dynamic weights** default to base weights (static expert opinion) until enough observations exist for correlation analysis
+- **Backtesting** requires historical sentiment-vs-return data that doesn't exist yet
+- **Agent memory** has no previous runs to reference for self-calibration
+
+The system bootstraps over time as the agent runs analyses and accumulates observations. Running a few manual "Full Analysis" cycles builds the initial observation history.
+
+### LLM Cost
+
+A full analysis of all 52 nodes typically uses **30-60K tokens** depending on the LLM and how many tools the agent calls. With Claude Sonnet, this is roughly $0.10-0.20 per run. With scheduled jobs enabled (agent every 6h + regime narratives), expect ~$1-2/day in API costs. Deep dives on single nodes are much cheaper (~5-10K tokens).
+
+### Reddit Keyword Matching
+
+Posts are matched to nodes via naive substring matching. "war" matches "software" and "warrant". NLP entity extraction would fix this but adds complexity.
+
+### Not a Trading Signal
+
+The system is designed for **macro analysis on daily-to-weekly timescales**. FRED data may be weeks old when analyzed. yfinance has a 15-minute delay on the free tier. The value is in causal reasoning and cross-node consistency, not in speed or precision.
+
+### Why Not a GNN / VAR / Diffusion Model?
+
+- **GNNs** could learn edge weights from data, but require large training datasets of labeled macro regimes — which don't exist in sufficient quantity. The handcrafted BFS approach is interpretable and works with expert knowledge from day one.
+- **VAR/VECM models** handle feedback loops and contemporaneous effects better, but are harder to explain to users. BFS with depth limits gives predictable, interpretable results where each hop has a clear meaning.
+- **Diffusion models** converge to steady states, which obscures the "trace the causal chain" intuition that makes the tool useful for macro analysts.
+
+---
+
+## 23. FAQ & Design Rationale
 
 **Q: Why not just use a correlation matrix?**
 Correlation is symmetric and undirected. This graph has directed causal edges — "rising CPI → higher rate expectations → lower equities" is a chain with direction, sign, and magnitude. Correlation can't capture that.
@@ -1128,7 +1207,7 @@ BFS with depth limits gives predictable, interpretable results. Each hop has a c
 Yes — edit `backend/app/graph_engine/topology.py`. The topology learning feature can also suggest new edges from correlation patterns. The UI has an "Evolve Graph" panel for accepting/rejecting LLM-suggested edges.
 
 **Q: Why is the scheduler disabled by default?**
-Each agent run costs LLM tokens. With 7 background jobs running continuously, API costs add up fast. Disabled by default lets users explore the tool manually before opting into automated data fetching.
+Each agent run costs LLM tokens. With 9 background jobs running continuously, API costs add up fast. Disabled by default lets users explore the tool manually before opting into automated data fetching.
 
 **Q: What's the known limitation of Reddit keyword matching?**
 Naive substring matching. "war" matches "software" and "warrant". NLP entity extraction would fix this but adds complexity. It's on the roadmap.

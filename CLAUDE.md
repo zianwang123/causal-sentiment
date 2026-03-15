@@ -58,7 +58,7 @@ causal-sentiment/
         market.py              # yfinance client (13 tickers mapped to nodes)
         retry.py               # Exponential backoff retry utility (3 attempts)
         reddit.py              # Reddit pipeline (asyncpraw, keyword→node mapping, 3 subreddits)
-        scheduler.py           # APScheduler: 7 jobs (FRED 4h, market 1h, Reddit 2h, agent 6h, weights 3AM, decay 2AM, prediction resolution 1h) — disabled by default (SCHEDULER_ENABLED=false)
+        scheduler.py           # APScheduler: 9 jobs (FRED 4h, market 1h, Reddit 2h, EDGAR daily 6AM, agent 6h, weights 3AM, regime 2h, decay 2AM, prediction resolution 1h) — disabled by default (SCHEDULER_ENABLED=false)
       api/
         routes_graph.py        # Graph CRUD + snapshot + anomalies + clusters + sentiment history + simulate + annotations + regime narrative
         routes_agent.py        # POST /api/agent/analyze, GET /api/agent/runs, GET /api/agent/predictions, GET /api/agent/predictions/summary
@@ -164,7 +164,7 @@ The agent runs a structured **Plan → Analyze → Validate** loop (max 25 round
 
 ## Scheduler
 
-APScheduler runs 7 background jobs (all disabled by default — set `SCHEDULER_ENABLED=true` in `.env`):
+APScheduler runs 9 background jobs (all disabled by default — set `SCHEDULER_ENABLED=true` in `.env`):
 - **FRED fetch** — every 4 hours (+ anomaly check → auto-trigger agent if 2σ)
 - **Market fetch** (yfinance) — every 1 hour (+ anomaly check → auto-trigger agent if 2σ)
 - **Reddit fetch** — every 2 hours (stores posts matched to nodes by keyword)
