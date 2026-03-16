@@ -250,9 +250,7 @@ backend/app/causal_discovery/
 |-- __init__.py
 |-- README.md                  <-- This file
 |
-|-- models.py                  <-- NodeValue SQLAlchemy model + hypertable setup
-|
-|-- models.py                  <-- NodeValue + DiscoveredGraph SQLAlchemy models
+|-- models.py                  <-- NodeValue, DiscoveredGraph, CausalAnchor models
 |
 |-- pipeline/
 |   |-- __init__.py

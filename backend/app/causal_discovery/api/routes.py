@@ -467,7 +467,7 @@ async def trigger_discovery(
 
     Parameters:
         run_name: Label for this series of snapshots (e.g. 'weekly_full')
-        algorithm: 'pcmci', 'granger', 'pc', 'ges', 'varlingam'
+        algorithm: 'pcmci', 'granger', 'pc', 'ges', 'varlingam', 'rpcmci'
         scoring: 'zscore', 'returns', 'volatility' — how to transform raw data before discovery
         max_lag: Maximum causal lag in days
         significance_level: p-value threshold (pcmci only)
