@@ -51,6 +51,7 @@ This is exactly how a macro strategist thinks about positioning: "if X happens, 
 - **Time travel** — replay graph state over the past 7 days
 - **Portfolio overlay** — add your positions, see them highlighted on the graph
 - **Edge discovery** — AI suggests new causal edges from correlation patterns
+- **Causal discovery module** — computationally discovers causal networks from data using PCMCI+, Granger, and RPCMCI algorithms, with DoWhy statistical validation (see [Causal Discovery](#causal-discovery-module) below)
 
 For details on algorithms, formulas, and design rationale, see the **[Technical Manual](docs/TECHNICAL_MANUAL.md)**.
 
@@ -290,6 +291,37 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)
+
+---
+
+## Causal Discovery Module
+
+In addition to the hand-crafted expert graph (52 nodes, 117 edges), the project includes a **computational causal discovery module** that discovers the network structure directly from historical data — no manual edge definitions needed.
+
+### How it works
+
+1. **Data pipeline** fetches daily prices and macro indicators from 45 sources (yfinance, FRED, CFTC, GDELT, GPR Index) into a TimescaleDB hypertable
+2. **Scoring** transforms raw data into comparable signals: z-score (deviation from 90-day average), log returns (daily changes), or rolling volatility (20-day choppiness)
+3. **Causal algorithms** discover which factors statistically predict which others:
+   - **PCMCI+** — controls for confounders, best for time-series (primary)
+   - **Granger** — pairwise tests, fast but more spurious edges
+   - **RPCMCI** — detects market regime shifts and discovers different causal structures per regime
+4. **DoWhy validation** automatically tests every discovered edge with conditional independence tests — typically 74-84% of PCMCI+ edges pass
+5. **Anchor propagation** infers display polarity (green/red) from a small set of anchor nodes (e.g., S&P 500 = positive, VIX = negative) via BFS through causal edges
+
+### Expert vs. Discovered
+
+| | Expert Graph | Discovered Graph |
+|---|---|---|
+| Nodes | 52 hand-picked | 34-42 from data, filtered by statistical significance |
+| Edges | 117 hand-drawn | 39-287 learned from algorithms |
+| Weights | Expert-defined | Data-driven |
+| Scores | LLM sentiment (~$0.04/node, ~30s) | Z-score (free, instant) |
+| Validation | None | DoWhy statistical tests |
+
+The frontend lets you toggle between expert and discovered modes. Both support shock simulation, animation, and node inspection.
+
+For the full technical specification, see **[backend/app/causal_discovery/README.md](backend/app/causal_discovery/README.md)**.
 
 ---
 
