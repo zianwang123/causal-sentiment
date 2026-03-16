@@ -19,6 +19,8 @@ from app.api.websocket import websocket_endpoint
 from app.db.connection import async_session, engine
 from app.graph_engine.propagation import build_networkx_graph
 from app.graph_engine.topology import MVP_EDGES, MVP_NODES
+from app.causal_discovery.api.routes import router as causal_router
+from app.causal_discovery.models import create_hypertable_if_needed, create_node_values_index, seed_default_anchors
 from app.models.graph import Base, Edge, Node
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -107,6 +109,10 @@ async def lifespan(app: FastAPI):
         # but create_all doesn't alter existing tables — only creates new ones)
         from app.db.schema_sync import sync_schemas
         await sync_schemas(conn)
+        # Causal discovery: convert node_values to hypertable + create index
+        await create_hypertable_if_needed(conn)
+        await create_node_values_index(conn)
+        await seed_default_anchors(conn)
     await seed_graph_if_empty()
     logger.info("Graph loaded: %d nodes, %d edges", app_state.graph.number_of_nodes(), app_state.graph.number_of_edges())
 
@@ -119,7 +125,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    sched.shutdown(wait=True)
+    sched.shutdown(wait=False)
     await engine.dispose()
 
 
@@ -142,6 +148,7 @@ app.include_router(graph_router)
 app.include_router(agent_router)
 app.include_router(portfolio_router)
 app.include_router(annotations_router)
+app.include_router(causal_router)
 app.add_api_websocket_route("/ws", websocket_endpoint)
 
 
