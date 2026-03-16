@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Graph3D from "@/components/Graph3D";
 import NodePanel from "@/components/NodePanel";
+import CausalNodePanel from "@/components/CausalNodePanel";
 import FilterBar from "@/components/FilterBar";
 import SentimentTimeline from "@/components/SentimentTimeline";
 import AgentRunLog from "@/components/AgentRunLog";
@@ -13,14 +14,19 @@ import TopologySuggestions from "@/components/TopologySuggestions";
 import UserGuide from "@/components/UserGuide";
 import NodeLocator from "@/components/NodeLocator";
 import SimulationPanel from "@/components/SimulationPanel";
+import CausalPanel from "@/components/CausalPanel";
+import CausalAnimationPlayer from "@/components/CausalAnimationPlayer";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useGraphStore, useGraphWebSocket } from "@/hooks/useGraphData";
+import { useCausalStore } from "@/hooks/useCausalStore";
 
 export default function Home() {
   const fetchGraph = useGraphStore((s) => s.fetchGraph);
   const loading = useGraphStore((s) => s.loading);
   const error = useGraphStore((s) => s.error);
   const [portfolioNodeIds, setPortfolioNodeIds] = useState<string[]>([]);
+  const graphSource = useCausalStore((s) => s.graphSource);
+  const isExpert = graphSource === "expert";
 
   useGraphWebSocket();
 
@@ -46,20 +52,24 @@ export default function Home() {
           </div>
         )}
         <Graph3D portfolioNodeIds={portfolioNodeIds} />
-        <FilterBar />
-        <NodePanel />
+        {isExpert && <FilterBar />}
+        <CausalPanel />
+        {isExpert ? <NodePanel /> : <CausalNodePanel />}
         <UserGuide />
-        <SimulationPanel />
-        <SentimentTimeline />
+        {isExpert && <SimulationPanel />}
+        {isExpert && <SentimentTimeline />}
+
+        {/* Animation player: above bottom toolbar in discovered mode */}
+        {!isExpert && <CausalAnimationPlayer />}
 
         {/* Bottom toolbar: centered */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-2">
-          <AgentRunLog />
-          <PredictionsPanel />
+          {isExpert && <AgentRunLog />}
+          {isExpert && <PredictionsPanel />}
           <NodeLocator />
-          <TopologySuggestions />
-          <TimeSlider />
-          <PortfolioPanel onPortfolioNodes={handlePortfolioNodes} />
+          {isExpert && <TopologySuggestions />}
+          {isExpert && <TimeSlider />}
+          {isExpert && <PortfolioPanel onPortfolioNodes={handlePortfolioNodes} />}
         </div>
       </main>
     </ErrorBoundary>
