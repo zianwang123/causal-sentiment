@@ -268,8 +268,8 @@ def _broadcast_progress(
                 "total_tool_calls": len(tool_calls_log),
             },
         }))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to broadcast agent progress: %s", e)
 
 
 async def _execute_tool(

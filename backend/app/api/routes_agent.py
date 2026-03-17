@@ -175,8 +175,8 @@ async def _run_analysis_background(node_ids: list[str], trigger: str, app_state)
                     "error": str(e),
                 },
             })
-        except Exception:
-            pass
+        except Exception as notify_err:
+            logger.error("Failed to send error notification to frontend: %s", notify_err)
 
 
 def _handle_notification_error(task: asyncio.Task) -> None:

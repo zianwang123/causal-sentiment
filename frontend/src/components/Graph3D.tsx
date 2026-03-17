@@ -45,6 +45,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const animationProgress = useCausalStore((s) => s.animationProgress);
   const dyingEdges = useCausalStore((s) => s.dyingEdges);
   const signalEdges = useCausalStore((s) => s.signalEdges);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ForceGraphMethods generic requires matching node/link types
   const graphRef = useRef<any>(null);
 
   // Click-to-highlight neighbors in discovered mode

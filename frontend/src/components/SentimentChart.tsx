@@ -23,14 +23,18 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
 
   // Fetch history data
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
-    fetch(`${API}/api/graph/sentiment/history/${nodeId}?days=${range}`)
+    fetch(`${API}/api/graph/sentiment/history/${nodeId}?days=${range}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((d: HistoryPoint[]) => {
         setData(d);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        if (e.name !== "AbortError") setLoading(false);
+      });
+    return () => controller.abort();
   }, [nodeId, range]);
 
   // Render chart

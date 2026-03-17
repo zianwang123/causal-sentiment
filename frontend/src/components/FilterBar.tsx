@@ -41,7 +41,7 @@ export default function FilterBar() {
     fetch(`${API}/api/agent/llm-config`)
       .then((r) => r.json())
       .then((data: LLMConfig) => setLlmConfig(data))
-      .catch(() => {});
+      .catch((e) => console.error("Failed to fetch LLM config:", e));
   }, []);
 
   const switchProvider = useCallback((provider: string) => {
@@ -52,7 +52,7 @@ export default function FilterBar() {
     })
       .then((r) => r.json())
       .then((data: LLMConfig) => setLlmConfig(data))
-      .catch(() => {});
+      .catch((e) => console.error("Failed to switch LLM provider:", e));
   }, []);
 
   useEffect(() => {

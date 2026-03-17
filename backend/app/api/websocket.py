@@ -20,7 +20,10 @@ class ConnectionManager:
         logger.info("WebSocket client connected (%d total)", len(self.active_connections))
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        try:
+            self.active_connections.remove(websocket)
+        except ValueError:
+            pass  # Already removed (e.g., by broadcast cleanup)
         logger.info("WebSocket client disconnected (%d remaining)", len(self.active_connections))
 
     async def broadcast(self, data: dict):

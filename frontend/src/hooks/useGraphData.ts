@@ -17,6 +17,9 @@ import { wsClient } from "@/lib/websocket";
 
 import { API_URL } from "@/lib/config";
 
+// Module-level timeout ID for agent safety timeout (avoids `as any` on store)
+let agentTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
 interface AgentProgress {
   round: number;
   maxRounds: number;
@@ -159,7 +162,7 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         }
       }, 15 * 60 * 1000);
       // Store timeout so it can be cleared on normal completion
-      (useGraphStore as any)._agentTimeout = timeoutId;
+      agentTimeoutId = timeoutId;
     } catch (e) {
       set({ error: (e as Error).message, agentRunning: false, agentProgress: null });
     }
@@ -214,10 +217,9 @@ export function useGraphWebSocket() {
     });
     const unsubComplete = wsClient.on("agent_complete", () => {
       // Clear safety timeout
-      const timeoutId = (useGraphStore as any)._agentTimeout;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        (useGraphStore as any)._agentTimeout = null;
+      if (agentTimeoutId) {
+        clearTimeout(agentTimeoutId);
+        agentTimeoutId = null;
       }
       useGraphStore.setState({ agentRunning: false, agentProgress: null });
       useGraphStore.getState().fetchGraph();

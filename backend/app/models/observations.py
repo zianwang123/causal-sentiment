@@ -68,7 +68,7 @@ class Prediction(Base):
     predicted_sentiment = Column(Float, nullable=False)
     horizon_hours = Column(Integer, default=168)  # default 7 days
     reasoning = Column(Text, default="")
-    agent_run_id = Column(Integer, nullable=True)
+    agent_run_id = Column(Integer, ForeignKey("agent_runs.id"), nullable=True)
     created_at = Column(DateTime, default=func.now(), index=True)
     resolved_at = Column(DateTime, nullable=True)
     actual_sentiment = Column(Float, nullable=True)

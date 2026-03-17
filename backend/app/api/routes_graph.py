@@ -495,10 +495,17 @@ async def accept_suggestion(
         "negative": EdgeDirection.NEGATIVE,
         "complex": EdgeDirection.COMPLEX,
     }
+    mapped_direction = direction_map.get(suggestion.suggested_direction)
+    if mapped_direction is None:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid direction '{suggestion.suggested_direction}'. Must be positive, negative, or complex.",
+        )
     new_edge = Edge(
         source_id=suggestion.source_id,
         target_id=suggestion.target_id,
-        direction=direction_map.get(suggestion.suggested_direction, EdgeDirection.POSITIVE),
+        direction=mapped_direction,
         base_weight=suggestion.suggested_weight,
         dynamic_weight=suggestion.suggested_weight,
         description=f"LLM-suggested: {suggestion.llm_reasoning[:200]}",

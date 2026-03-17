@@ -56,25 +56,35 @@ export default function PortfolioPanel({
 
   const addPosition = async () => {
     if (!ticker || !shares || !entryPrice) return;
-    await fetch(`${API}/api/portfolio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ticker,
-        shares: parseFloat(shares),
-        entry_price: parseFloat(entryPrice),
-      }),
-    });
-    setTicker("");
-    setShares("");
-    setEntryPrice("");
-    setShowForm(false);
-    fetchSummary();
+    try {
+      const res = await fetch(`${API}/api/portfolio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ticker,
+          shares: parseFloat(shares),
+          entry_price: parseFloat(entryPrice),
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setTicker("");
+      setShares("");
+      setEntryPrice("");
+      setShowForm(false);
+      fetchSummary();
+    } catch (e) {
+      console.error("Failed to add position:", e);
+    }
   };
 
   const deletePosition = async (id: number) => {
-    await fetch(`${API}/api/portfolio/${id}`, { method: "DELETE" });
-    fetchSummary();
+    try {
+      const res = await fetch(`${API}/api/portfolio/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      fetchSummary();
+    } catch (e) {
+      console.error("Failed to delete position:", e);
+    }
   };
 
   return (
