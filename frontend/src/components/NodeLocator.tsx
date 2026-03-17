@@ -81,14 +81,14 @@ export default function NodeLocator() {
     >
       <span
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ backgroundColor: sentimentToColor(node.sentiment) }}
+        style={{ backgroundColor: sentimentToColor(node.sentiment, node.id) }}
       />
       <span className="text-xs text-gray-300 truncate flex-1">
         {node.label}
       </span>
       <span
         className="text-[10px] font-mono flex-shrink-0"
-        style={{ color: sentimentToColor(node.sentiment) }}
+        style={{ color: sentimentToColor(node.sentiment, node.id) }}
       >
         {node.sentiment > 0 ? "+" : ""}
         {node.sentiment.toFixed(2)}

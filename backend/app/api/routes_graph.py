@@ -518,21 +518,21 @@ async def accept_suggestion(
     suggestion.status = "accepted"
     suggestion.reviewed_at = datetime.utcnow()
 
-    await session.commit()
-
-    # Add to in-memory graph
-    app_state.graph.add_edge(
-        suggestion.source_id,
-        suggestion.target_id,
-        direction=suggestion.suggested_direction,
-        base_weight=suggestion.suggested_weight,
-        dynamic_weight=suggestion.suggested_weight,
-        effective_weight=suggestion.suggested_weight,
-    )
-
-    # Invalidate centrality cache since topology changed
+    # Commit DB and update in-memory graph atomically under lock
     from app.graph_engine.weights import invalidate_centrality_cache
-    invalidate_centrality_cache()
+    async with app_state.graph_lock:
+        await session.commit()
+
+        app_state.graph.add_edge(
+            suggestion.source_id,
+            suggestion.target_id,
+            direction=suggestion.suggested_direction,
+            base_weight=suggestion.suggested_weight,
+            dynamic_weight=suggestion.suggested_weight,
+            effective_weight=suggestion.suggested_weight,
+        )
+
+        invalidate_centrality_cache()
 
     return {"status": "accepted", "edge_id": new_edge.id}
 

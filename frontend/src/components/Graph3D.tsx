@@ -95,6 +95,13 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     [anomalies]
   );
 
+  // Pre-compute node lookup map to avoid O(n) scans in per-frame callbacks
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, ForceGraphNode>();
+    for (const n of nodes) map.set(n.id, n);
+    return map;
+  }, [nodes]);
+
   // Build simulation impact lookup: node_id → impact magnitude
   const simImpactMap = useMemo(() => {
     if (!simulation) return null;
@@ -272,10 +279,10 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           if (isDiscovered && highlightData) {
             const dist = highlightData.distances.get(node.id);
             if (dist === undefined) return "#111111"; // unreachable: nearly black
-            if (dist === 0) return sentimentToColor(node.sentiment ?? 0); // source: full color
+            if (dist === 0) return sentimentToColor(node.sentiment ?? 0, node.id); // source: full color
             // Strong fade: hop 1 = 70%, hop 2 = 35%, hop 3 = 15%
             const fade = [1, 0.7, 0.35, 0.15][dist] ?? 0.1;
-            return sentimentToColor((node.sentiment ?? 0) * fade);
+            return sentimentToColor((node.sentiment ?? 0) * fade, node.id);
           }
           if (portfolioSet.has(node.id)) return "#f59e0b"; // Amber for portfolio
           if (anomalyNodeIds.has(node.id)) return "#facc15"; // Yellow for anomaly
@@ -284,9 +291,9 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           if (isDiscovered && isAnimating) {
             const phase = Math.pow(animationProgress, 3);
             if (phase < 0.01) return "#555555";
-            return sentimentToColor((node.sentiment ?? 0) * phase);
+            return sentimentToColor((node.sentiment ?? 0) * phase, node.id);
           }
-          return sentimentToColor(node.sentiment ?? 0);
+          return sentimentToColor(node.sentiment ?? 0, node.id);
         }}
         nodeVal={(node: any) => {
           if (isDiscovered) {
@@ -341,7 +348,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
 
               const edgePhase = Math.pow(animationProgress, 3);
               if (edgePhase < 0.01) return "#444444";
-              const srcNode = nodes.find((n) => n.id === srcId);
+              const srcNode = nodeMap.get(srcId);
               const srcSentiment = srcNode?.sentiment ?? 0;
               const effectiveSentiment = link.direction === "negative" ? -srcSentiment : srcSentiment;
               return sentimentToColor(effectiveSentiment * 0.5 * edgePhase);
@@ -355,13 +362,13 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
               const tgtDist = highlightData.distances.get(tgtId) ?? 99;
               const maxDist = Math.max(srcDist, tgtDist);
               const fade = [1, 0.8, 0.4, 0.2][maxDist] ?? 0.1;
-              const srcNode = nodes.find((n) => n.id === srcId);
+              const srcNode = nodeMap.get(srcId);
               const srcSentiment = srcNode?.sentiment ?? 0;
               const effectiveSentiment = link.direction === "negative" ? -srcSentiment : srcSentiment;
               return sentimentToColor(effectiveSentiment * fade);
             }
             // Normal: edge color = source sentiment, dimmed
-            const srcNode = nodes.find((n) => n.id === srcId);
+            const srcNode = nodeMap.get(srcId);
             const srcSentiment = srcNode?.sentiment ?? 0;
             const effectiveSentiment = link.direction === "negative" ? -srcSentiment : srcSentiment;
             return sentimentToColor(effectiveSentiment * 0.5);

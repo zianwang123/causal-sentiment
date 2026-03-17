@@ -22,7 +22,7 @@ EDGAR_COMPANY_MAP: dict[str, dict] = {
     "JPM":   {"cik": "0000019617", "name": "JPMorgan Chase", "nodes": ["financials_sector", "earnings_momentum"]},
     "GS":    {"cik": "0000886982", "name": "Goldman Sachs", "nodes": ["financials_sector", "earnings_momentum"]},
     "XOM":   {"cik": "0000034088", "name": "Exxon Mobil", "nodes": ["energy_sector", "earnings_momentum"]},
-    "JNJ":   {"cik": "0000200406", "name": "Johnson & Johnson", "nodes": ["earnings_momentum", "sp500"]},
+    "JNJ":   {"cik": "0000200406", "name": "Johnson & Johnson", "nodes": ["earnings_momentum"]},
 }
 
 # SEC requires a descriptive User-Agent

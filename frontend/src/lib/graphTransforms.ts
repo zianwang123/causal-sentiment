@@ -32,18 +32,34 @@ export function transformGraphData(data: GraphData): {
   return { nodes, links };
 }
 
-export function sentimentToColor(sentiment: number): string {
-  // Red (bearish) → Gray (neutral) → Green (bullish)
+// Risk nodes: positive sentiment = elevated risk = BAD for markets → show RED
+// Color is inverted so green always means "market-friendly", red always means "market-threatening"
+const RISK_NODE_IDS = new Set([
+  "vix", "move_index", "put_call_ratio", "skew_index", "credit_default_swaps",
+  "ig_credit_spread", "hy_credit_spread",
+  "geopolitical_risk_index", "trade_policy_tariffs", "us_political_risk", "sanctions_pressure",
+  "unemployment_rate", "us_cpi_yoy", "pce_deflator",
+]);
+
+export function isRiskNode(nodeId: string): boolean {
+  return RISK_NODE_IDS.has(nodeId);
+}
+
+export function sentimentToColor(sentiment: number, nodeId?: string): string {
+  // For risk nodes, invert: positive (elevated risk) → red, negative (low risk) → green
+  const displaySentiment = nodeId && isRiskNode(nodeId) ? -sentiment : sentiment;
+
+  // Red (bad) → Gray (neutral) → Green (good)
   // Apply sqrt curve to boost contrast for small sentiment values
-  if (sentiment < -0.01) {
-    const raw = Math.min(Math.abs(sentiment), 1);
+  if (displaySentiment < -0.01) {
+    const raw = Math.min(Math.abs(displaySentiment), 1);
     const intensity = Math.sqrt(raw);
     const r = Math.round(100 + 155 * intensity);
     const g = Math.round(100 * (1 - intensity));
     const b = Math.round(60 * (1 - intensity));
     return `rgb(${r},${g},${b})`;
-  } else if (sentiment > 0.01) {
-    const raw = Math.min(sentiment, 1);
+  } else if (displaySentiment > 0.01) {
+    const raw = Math.min(displaySentiment, 1);
     const intensity = Math.sqrt(raw);
     const r = Math.round(60 * (1 - intensity));
     const g = Math.round(100 + 155 * intensity);

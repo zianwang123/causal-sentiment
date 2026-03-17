@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useNodeSelection } from "@/hooks/useNodeSelection";
-import { sentimentToColor, edgeDirectionColor } from "@/lib/graphTransforms";
+import { sentimentToColor, edgeDirectionColor, isRiskNode } from "@/lib/graphTransforms";
 import { useGraphStore } from "@/hooks/useGraphData";
 
 const SentimentChart = dynamic(() => import("./SentimentChart"), { ssr: false });
@@ -114,7 +114,11 @@ function AnnotationsSection({ nodeId }: { nodeId: string }) {
         const created: Annotation = await res.json();
         setAnnotations((prev) => [created, ...prev]);
         setNewText("");
+      } else {
+        console.error("Failed to save annotation:", res.status);
       }
+    } catch (e) {
+      console.error("Failed to save annotation:", e);
     } finally {
       setSaving(false);
     }
@@ -288,9 +292,15 @@ export default function NodePanel() {
 
   if (!selectedNode) return null;
 
-  const sentimentColor = sentimentToColor(selectedNode.sentiment);
-  const sentimentLabel =
-    selectedNode.sentiment > 0.2
+  const sentimentColor = sentimentToColor(selectedNode.sentiment, selectedNode.id);
+  const risk = isRiskNode(selectedNode.id);
+  const sentimentLabel = risk
+    ? selectedNode.sentiment > 0.2
+      ? "Elevated"
+      : selectedNode.sentiment < -0.2
+        ? "Subdued"
+        : "Neutral"
+    : selectedNode.sentiment > 0.2
       ? "Bullish"
       : selectedNode.sentiment < -0.2
         ? "Bearish"
@@ -308,7 +318,16 @@ export default function NodePanel() {
         </button>
       </div>
 
-      <p className="text-sm text-gray-400 mb-3">{selectedNode.description}</p>
+      <p className="text-sm text-gray-400 mb-2">{selectedNode.description}</p>
+      <div className={`text-[10px] px-2 py-1 rounded mb-3 ${
+        risk
+          ? "bg-red-900/20 text-red-400 border border-red-800/30"
+          : "bg-green-900/20 text-green-400 border border-green-800/30"
+      }`}>
+        {risk
+          ? "Risk indicator — positive = elevated risk (bad for markets), negative = low risk (good)"
+          : "Asset indicator — positive = bullish (good for markets), negative = bearish (bad)"}
+      </div>
 
       {(() => {
         const anomaly = anomalies.find((a) => a.node_id === selectedNode.id);

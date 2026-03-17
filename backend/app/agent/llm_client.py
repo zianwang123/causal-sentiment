@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
 
+import httpx
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Timeout for LLM API calls (connect, read, write, pool)
+LLM_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
+# Max retries for transient errors (rate limit, overloaded)
+MAX_RETRIES = 2
+RETRY_BASE_DELAY = 5.0  # seconds
 
 
 @dataclass
@@ -70,15 +79,51 @@ async def _anthropic_round(
 ) -> tuple[LLMResponse, list[dict]]:
     import anthropic
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=LLM_TIMEOUT)
 
-    response = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=8192,
-        system=system,
-        tools=_anthropic_tools(tools),
-        messages=messages,
-    )
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=8192,
+                system=system,
+                tools=_anthropic_tools(tools),
+                messages=messages,
+            )
+            break
+        except anthropic.RateLimitError as e:
+
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning("Anthropic rate limited (attempt %d/%d), retrying in %.0fs", attempt + 1, MAX_RETRIES + 1, delay)
+                await asyncio.sleep(delay)
+            else:
+                raise RuntimeError(f"Anthropic rate limit exceeded after {MAX_RETRIES + 1} attempts") from e
+        except anthropic.APITimeoutError as e:
+
+            if attempt < MAX_RETRIES:
+                logger.warning("Anthropic timeout (attempt %d/%d), retrying", attempt + 1, MAX_RETRIES + 1)
+                await asyncio.sleep(RETRY_BASE_DELAY)
+            else:
+                raise RuntimeError(f"Anthropic API timed out after {MAX_RETRIES + 1} attempts") from e
+        except anthropic.APIConnectionError as e:
+            raise RuntimeError(f"Cannot connect to Anthropic API: {e}") from e
+        except anthropic.AuthenticationError as e:
+            raise RuntimeError(f"Anthropic API key invalid: {e}") from e
+        except anthropic.BadRequestError as e:
+            raise RuntimeError(f"Anthropic bad request (prompt too large?): {e}") from e
+        except anthropic.APIStatusError as e:
+            if e.status_code == 529:  # Overloaded
+    
+                if attempt < MAX_RETRIES:
+                    delay = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning("Anthropic overloaded (attempt %d/%d), retrying in %.0fs", attempt + 1, MAX_RETRIES + 1, delay)
+                    await asyncio.sleep(delay)
+                else:
+                    raise RuntimeError(f"Anthropic API overloaded after {MAX_RETRIES + 1} attempts") from e
+            else:
+                raise RuntimeError(f"Anthropic API error ({e.status_code}): {e.message}") from e
 
     assistant_content = response.content
     messages.append({"role": "assistant", "content": assistant_content})
@@ -124,7 +169,7 @@ async def _openai_round(
 ) -> tuple[LLMResponse, list[dict]]:
     import openai
 
-    client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT)
 
     # Convert messages to OpenAI format
     oai_messages = _to_openai_messages(system, messages)
@@ -143,12 +188,37 @@ async def _openai_round(
                 logger.error("Problematic message at index %d: %s", i, repr(msg_item)[:500])
                 break
 
-    response = await client.chat.completions.create(
-        model=settings.openai_model,
-        max_completion_tokens=8192,
-        messages=oai_messages,
-        tools=_openai_tools(tools),
-    )
+
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            response = await client.chat.completions.create(
+                model=settings.openai_model,
+                max_completion_tokens=8192,
+                messages=oai_messages,
+                tools=_openai_tools(tools),
+            )
+            break
+        except openai.RateLimitError as e:
+
+            if attempt < MAX_RETRIES:
+                delay = RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning("OpenAI rate limited (attempt %d/%d), retrying in %.0fs", attempt + 1, MAX_RETRIES + 1, delay)
+                await asyncio.sleep(delay)
+            else:
+                raise RuntimeError(f"OpenAI rate limit exceeded after {MAX_RETRIES + 1} attempts") from e
+        except openai.APITimeoutError as e:
+
+            if attempt < MAX_RETRIES:
+                logger.warning("OpenAI timeout (attempt %d/%d), retrying", attempt + 1, MAX_RETRIES + 1)
+                await asyncio.sleep(RETRY_BASE_DELAY)
+            else:
+                raise RuntimeError(f"OpenAI API timed out after {MAX_RETRIES + 1} attempts") from e
+        except openai.APIConnectionError as e:
+            raise RuntimeError(f"Cannot connect to OpenAI API: {e}") from e
+        except openai.AuthenticationError as e:
+            raise RuntimeError(f"OpenAI API key invalid: {e}") from e
+        except openai.BadRequestError as e:
+            raise RuntimeError(f"OpenAI bad request: {e}") from e
 
     choice = response.choices[0]
     msg = choice.message
@@ -278,23 +348,31 @@ async def simple_completion(system: str, user_message: str) -> str:
 
     if provider == "openai":
         import openai
-        client = openai.AsyncOpenAI(api_key=settings.openai_api_key)
-        response = await client.chat.completions.create(
-            model=settings.openai_model,
-            max_completion_tokens=2048,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_message},
-            ],
-        )
-        return response.choices[0].message.content or ""
+        client = openai.AsyncOpenAI(api_key=settings.openai_api_key, timeout=LLM_TIMEOUT)
+        try:
+            response = await client.chat.completions.create(
+                model=settings.openai_model,
+                max_completion_tokens=2048,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_message},
+                ],
+            )
+            return response.choices[0].message.content or ""
+        except (openai.RateLimitError, openai.APITimeoutError, openai.APIConnectionError) as e:
+            logger.error("OpenAI simple_completion failed: %s", e)
+            raise RuntimeError(f"OpenAI API error: {e}") from e
     else:
         import anthropic
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        response = await client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=2048,
-            messages=[{"role": "user", "content": user_message}],
-            system=system,
-        )
-        return response.content[0].text
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=LLM_TIMEOUT)
+        try:
+            response = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=2048,
+                messages=[{"role": "user", "content": user_message}],
+                system=system,
+            )
+            return response.content[0].text
+        except (anthropic.RateLimitError, anthropic.APITimeoutError, anthropic.APIConnectionError) as e:
+            logger.error("Anthropic simple_completion failed: %s", e)
+            raise RuntimeError(f"Anthropic API error: {e}") from e

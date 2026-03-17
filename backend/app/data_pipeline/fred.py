@@ -16,6 +16,7 @@ FRED_KEY_SERIES = [
     "CPIAUCSL",
     "GDP",
     "UNRATE",
+    "MANEMP",
     "T10Y2Y",
     "DGS2",
     "DGS10",

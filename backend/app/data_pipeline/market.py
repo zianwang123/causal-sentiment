@@ -13,19 +13,31 @@ logger = logging.getLogger(__name__)
 
 # Ticker → graph node ID mapping
 MARKET_TICKER_MAP: dict[str, str] = {
+    # Equities
     "SPY": "sp500",
     "QQQ": "nasdaq",
     "IWM": "russell2000",
     "XLK": "tech_sector",
     "XLE": "energy_sector",
     "XLF": "financials_sector",
+    # Commodities
     "GLD": "gold",
     "SLV": "silver",
     "USO": "wti_crude",
     "UNG": "natural_gas",
     "HG=F": "copper",
     "ZW=F": "wheat",
+    # Currencies
     "DX-Y.NYB": "dxy_index",
+    "EURUSD=X": "eurusd",
+    "USDJPY=X": "usdjpy",
+    "USDCNY=X": "usdcny",
+    # Volatility & credit indices
+    "^VIX": "vix",
+    "^MOVE": "move_index",
+    "^SKEW": "skew_index",
+    "HYG": "hy_credit_spread",
+    "LQD": "ig_credit_spread",
 }
 
 
@@ -47,11 +59,20 @@ def _fetch_sync(tickers: list[str], period: str = "5d") -> dict[str, dict]:
                 close = float(last["Close"])
                 prev_close = float(prev["Close"])
                 change_pct = ((close - prev_close) / prev_close) * 100 if prev_close else 0.0
+                # 5-day context for richer agent reasoning
+                high_5d = float(data["High"].max())
+                low_5d = float(data["Low"].min())
+                first_close = float(data["Close"].iloc[0])
+                change_5d_pct = ((close - first_close) / first_close) * 100 if first_close else 0.0
                 results[ticker] = {
                     "close": round(close, 4),
                     "prev_close": round(prev_close, 4),
                     "change_pct": round(change_pct, 4),
                     "date": str(data.index[-1].date()),
+                    "high_5d": round(high_5d, 4),
+                    "low_5d": round(low_5d, 4),
+                    "change_5d_pct": round(change_5d_pct, 4),
+                    "trend": "up" if close > first_close else "down",
                 }
                 break  # Success
             except Exception as e:

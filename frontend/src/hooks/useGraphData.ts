@@ -192,12 +192,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
 }));
 
 export function useGraphWebSocket() {
-  const updateFromWs = useGraphStore((s) => s.updateFromWs);
-
   useEffect(() => {
     wsClient.connect();
     const unsub = wsClient.on("graph_update", (data) => {
-      updateFromWs(data as GraphData);
+      useGraphStore.getState().updateFromWs(data as GraphData);
     });
     const unsubRegime = wsClient.on("regime_update", (data) => {
       useGraphStore.setState({ regime: data as RegimeInfo });
@@ -230,5 +228,5 @@ export function useGraphWebSocket() {
       unsubProgress();
       unsubComplete();
     };
-  }, [updateFromWs]);
+  }, []);
 }

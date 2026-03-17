@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -12,6 +13,9 @@ from apscheduler.triggers.interval import IntervalTrigger
 logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler()
+
+# Semaphore to prevent concurrent agent runs from scheduler triggers
+_agent_semaphore = asyncio.Semaphore(1)
 
 
 async def scheduled_fred_fetch():
@@ -93,39 +97,43 @@ async def scheduled_agent_analysis():
     from app.models.observations import AgentRun, SentimentObservation
 
     logger.info("Scheduled agent analysis starting")
+    if _agent_semaphore.locked():
+        logger.info("Agent already running — skipping scheduled analysis")
+        return
     try:
-        async with async_session() as session:
-            # Find the last completed agent run
-            last_run_result = await session.execute(
-                select(AgentRun.finished_at)
-                .where(AgentRun.status == "completed")
-                .order_by(AgentRun.finished_at.desc())
-                .limit(1)
-            )
-            last_run_time = last_run_result.scalar_one_or_none()
+        async with _agent_semaphore:
+            async with async_session() as session:
+                # Find the last completed agent run
+                last_run_result = await session.execute(
+                    select(AgentRun.finished_at)
+                    .where(AgentRun.status == "completed")
+                    .order_by(AgentRun.finished_at.desc())
+                    .limit(1)
+                )
+                last_run_time = last_run_result.scalar_one_or_none()
 
-            # Find nodes with fresh observations since last run
-            query = select(SentimentObservation.node_id).distinct()
-            if last_run_time:
-                query = query.where(SentimentObservation.created_at > last_run_time)
+                # Find nodes with fresh observations since last run
+                query = select(SentimentObservation.node_id).distinct()
+                if last_run_time:
+                    query = query.where(SentimentObservation.created_at > last_run_time)
 
-            result = await session.execute(query)
-            fresh_node_ids = [row[0] for row in result.all()]
+                result = await session.execute(query)
+                fresh_node_ids = [row[0] for row in result.all()]
 
-            if not fresh_node_ids:
-                logger.info("No nodes with fresh data — skipping scheduled analysis")
-                return
+                if not fresh_node_ids:
+                    logger.info("No nodes with fresh data — skipping scheduled analysis")
+                    return
 
-            # Import here to avoid circular import
-            from app.main import app_state
+                # Import here to avoid circular import
+                from app.main import app_state
 
-            logger.info("Running scheduled analysis on %d nodes with fresh data", len(fresh_node_ids))
-            await run_analysis(
-                node_ids=fresh_node_ids,
-                session=session,
-                graph=app_state.graph,
-                trigger="scheduled",
-            )
+                logger.info("Running scheduled analysis on %d nodes with fresh data", len(fresh_node_ids))
+                await run_analysis(
+                    node_ids=fresh_node_ids,
+                    session=session,
+                    graph=app_state.graph,
+                    trigger="scheduled",
+                )
     except Exception as e:
         logger.exception("Scheduled agent analysis failed: %s", e)
 
@@ -187,14 +195,17 @@ async def _check_anomalies_and_trigger():
                 ", ".join(f"{a.node_id}={a.z_score}" for a in anomalies[:5]),
             )
 
-            from app.main import app_state
-
-            await run_analysis(
-                node_ids=anomalous_nodes,
-                session=session,
-                graph=app_state.graph,
-                trigger="anomaly",
-            )
+            if not _agent_semaphore.locked():
+                async with _agent_semaphore:
+                    from app.main import app_state
+                    await run_analysis(
+                        node_ids=anomalous_nodes,
+                        session=session,
+                        graph=app_state.graph,
+                        trigger="anomaly",
+                    )
+            else:
+                logger.info("Agent already running — skipping anomaly-triggered analysis")
     except Exception as e:
         logger.exception("Anomaly check failed: %s", e)
 
@@ -281,18 +292,23 @@ async def scheduled_news_fetch():
                 "Trending topics detected (%d nodes, top: %s) — triggering agent",
                 len(trending), trending_node_ids[:3],
             )
-            try:
-                from app.main import app_state
-                from app.db.connection import async_session as _async_session
-                async with _async_session() as session:
-                    await run_analysis(
-                        node_ids=trending_node_ids,
-                        session=session,
-                        graph=app_state.graph,
-                        trigger="trending_news",
-                    )
-            except Exception as e:
-                logger.exception("Trending news agent trigger failed: %s", e)
+            if not _agent_semaphore.locked():
+                try:
+                    async with _agent_semaphore:
+                        from app.agent.orchestrator import run_analysis
+                        from app.main import app_state
+                        from app.db.connection import async_session as _async_session
+                        async with _async_session() as session:
+                            await run_analysis(
+                                node_ids=trending_node_ids,
+                                session=session,
+                                graph=app_state.graph,
+                                trigger="trending_news",
+                            )
+                except Exception as e:
+                    logger.exception("Trending news agent trigger failed: %s", e)
+            else:
+                logger.info("Agent already running — skipping trending news trigger")
 
         await _check_anomalies_and_trigger()
     except Exception as e:
@@ -442,15 +458,14 @@ async def scheduled_sentiment_decay():
                     decayed = 0.0
                 node.composite_sentiment = decayed
                 updated += 1
-            await session.commit()
-            logger.info("Sentiment decay applied to %d nodes", updated)
-
-            # Update in-memory graph under lock
+            # Commit DB and update in-memory graph atomically under lock
             from app.main import app_state
             async with app_state.graph_lock:
+                await session.commit()
                 for node in nodes:
                     if node.id in app_state.graph:
                         app_state.graph.nodes[node.id]["composite_sentiment"] = node.composite_sentiment or 0.0
+            logger.info("Sentiment decay applied to %d nodes", updated)
     except Exception as e:
         logger.exception("Sentiment decay failed: %s", e)
 

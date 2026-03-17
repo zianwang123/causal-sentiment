@@ -141,6 +141,14 @@ async def run_analysis(
     tool_calls_log: list[dict] = []
     nodes_updated: list[str] = []  # Track which nodes get updated for validation
 
+    # Snapshot in-memory graph sentiment state so we can rollback on error (C3 fix)
+    graph_snapshot: dict[str, dict] = {}
+    for nid in graph.nodes:
+        graph_snapshot[nid] = {
+            "composite_sentiment": graph.nodes[nid].get("composite_sentiment", 0.0),
+            "confidence": graph.nodes[nid].get("confidence", 0.0),
+        }
+
     try:
         # ── PHASE 1: PLANNING ──────────────────────────────────────────
         planning_prompt = PLANNING_PROMPT_TEMPLATE.format(node_ids=", ".join(node_ids)) + portfolio_context
@@ -241,18 +249,41 @@ async def run_analysis(
 
     except Exception as e:
         logger.exception("Agent run failed")
+        # Rollback DB changes
         try:
             await session.rollback()
         except Exception:
             pass
-        # Re-fetch agent_run in clean session state to persist error
+        # Restore in-memory graph state from snapshot to prevent graph/DB divergence
         try:
+            from app.main import app_state
+            async with app_state.graph_lock:
+                for nid, snapshot in graph_snapshot.items():
+                    if nid in graph:
+                        graph.nodes[nid]["composite_sentiment"] = snapshot["composite_sentiment"]
+                        graph.nodes[nid]["confidence"] = snapshot["confidence"]
+            logger.info("Restored in-memory graph state from pre-run snapshot")
+        except Exception as restore_err:
+            logger.error("Failed to restore graph snapshot: %s", restore_err)
+        # Persist error state in a fresh session to avoid stale object issues
+        try:
+            from app.db.connection import async_session
+            async with async_session() as err_session:
+                from sqlalchemy import update
+                from app.models.observations import AgentRun as AgentRunModel
+                await err_session.execute(
+                    update(AgentRunModel)
+                    .where(AgentRunModel.id == agent_run.id)
+                    .values(
+                        status="error",
+                        error=str(e)[:2000],
+                        tool_calls=tool_calls_log,
+                        finished_at=datetime.utcnow(),
+                    )
+                )
+                await err_session.commit()
             agent_run.status = "error"
             agent_run.error = str(e)[:2000]
-            agent_run.tool_calls = tool_calls_log
-            agent_run.finished_at = datetime.utcnow()
-            session.add(agent_run)
-            await session.commit()
             return agent_run
         except Exception as commit_err:
             logger.error("Failed to persist agent error state: %s", commit_err)
@@ -260,6 +291,17 @@ async def run_analysis(
 
     await session.commit()
     return agent_run
+
+
+# Track fire-and-forget broadcast tasks to prevent GC and enable cleanup
+_broadcast_tasks: set[asyncio.Task] = set()
+
+
+def _broadcast_done_callback(task: asyncio.Task) -> None:
+    """Clean up completed broadcast tasks and log errors."""
+    _broadcast_tasks.discard(task)
+    if not task.cancelled() and task.exception():
+        logger.debug("Broadcast failed: %s", task.exception())
 
 
 def _broadcast_progress(
@@ -281,7 +323,8 @@ def _broadcast_progress(
                 "total_tool_calls": len(tool_calls_log),
             },
         }))
-        task.add_done_callback(lambda t: t.exception() and logger.debug("Broadcast failed: %s", t.exception()) if not t.cancelled() else None)
+        _broadcast_tasks.add(task)
+        task.add_done_callback(_broadcast_done_callback)
     except Exception as e:
         logger.debug("Failed to broadcast agent progress: %s", e)
 
@@ -428,8 +471,15 @@ async def _build_data_package(node_ids: list[str], session: AsyncSession, graph:
                     "ticker": ticker,
                     "close": p.get("close"),
                     "change_pct": p.get("change_pct"),
+                    "change_5d_pct": p.get("change_5d_pct"),
+                    "trend": p.get("trend"),
                 }
-                market_lines.append(f"  {ticker} → {node_id}: ${p.get('close', 'N/A')} ({p.get('change_pct', 0):+.2f}%)")
+                trend_str = ""
+                if p.get("change_5d_pct") is not None:
+                    trend_str = f", 5d: {p['change_5d_pct']:+.2f}% {p.get('trend', '')}"
+                    if p.get("high_5d") is not None:
+                        trend_str += f", range: {p['low_5d']}-{p['high_5d']}"
+                market_lines.append(f"  {ticker} → {node_id}: ${p.get('close', 'N/A')} (1d: {p.get('change_pct', 0):+.2f}%{trend_str})")
     except Exception as e:
         logger.warning("Pre-fetch market failed: %s", e)
 

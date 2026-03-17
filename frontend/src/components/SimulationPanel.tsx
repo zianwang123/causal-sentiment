@@ -44,7 +44,7 @@ export default function SimulationPanel() {
               </span>
               <span
                 className="text-xs font-mono ml-2 flex-shrink-0"
-                style={{ color: sentimentToColor(imp.impact) }}
+                style={{ color: sentimentToColor(imp.impact, imp.node_id) }}
               >
                 {imp.impact >= 0 ? "+" : ""}{imp.impact.toFixed(3)}
               </span>

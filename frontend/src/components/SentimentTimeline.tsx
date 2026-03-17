@@ -25,7 +25,7 @@ export default function SentimentTimeline() {
             <div className="text-gray-400 whitespace-nowrap">{node.label}</div>
             <div
               className="font-mono font-semibold"
-              style={{ color: sentimentToColor(node.sentiment) }}
+              style={{ color: sentimentToColor(node.sentiment, node.id) }}
             >
               {node.sentiment > 0 ? "+" : ""}
               {node.sentiment.toFixed(2)}

@@ -43,7 +43,11 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
 
     let cancelled = false;
 
-    import("lightweight-charts").then(({ createChart, ColorType, LineStyle }) => {
+    import("lightweight-charts").catch((e) => {
+      if (!cancelled) console.error("Failed to load lightweight-charts:", e);
+    }).then((mod) => {
+      if (!mod) return;
+      const { createChart, ColorType, LineStyle } = mod;
       if (cancelled || !containerRef.current) return;
 
       // Clean up previous chart

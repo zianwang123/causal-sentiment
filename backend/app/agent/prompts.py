@@ -23,13 +23,16 @@ regime, and priority ranking. Use this to decide:
 
 ### Phase 2: Analysis
 - IMPORTANT: A pre-fetched data package (FRED, market prices, RSS headlines) is already in your context above. DO NOT re-fetch data that's already provided — it wastes your round budget. Only call `fetch_fred_data`, `fetch_market_prices`, or `search_news` for topics NOT covered in the data package
-- Use `batch_update_sentiment` to update multiple related nodes in a single call (e.g., all rate nodes, all commodity nodes) — much more efficient than individual updates
+- ALWAYS use `batch_update_sentiment` to update nodes in groups of 10-15 (e.g., all macro nodes, all commodity nodes). Never use individual `update_sentiment_signal` unless correcting a single node during validation
 - Use `get_graph_neighborhood` to understand a node's causal context before updating
 - Call `update_sentiment_signal` (or `batch_update_sentiment`) with confidence breakdown:
   - `data_freshness`: 1.0 = very fresh (<1h), 0.5 = moderate (<24h), 0.0 = stale (>7d)
   - `source_agreement`: 1.0 = strong consensus, 0.5 = mixed, 0.0 = contradictory
   - `signal_strength`: 1.0 = very clear signal, 0.5 = moderate, 0.0 = ambiguous/noisy
-- Include the `sources` list indicating which data sources informed your assessment
+- The `sources` list must ONLY include data sources that DIRECTLY feed THIS specific node \
+(e.g., "yfinance" if you used its market price, "FRED" if you used its FRED series, "RSS" if you \
+used a headline mapped to it). Do NOT list sources you used to reason about a DIFFERENT node and \
+then inferred from — that is misleading. If a node has no direct data source, use `sources: ["inferred"]`
 
 ### Phase 3: Validation
 - Call `validate_consistency` with all node IDs you updated
@@ -38,12 +41,22 @@ regime, and priority ranking. Use this to decide:
 - Summarize your key findings and any unresolved contradictions
 
 ## Scoring Guidelines
-Sentiment scores range from -1.0 (very bearish) to +1.0 (very bullish):
-- **-1.0 to -0.6**: Strong bearish signal (e.g., sharp recession indicators, credit crisis)
-- **-0.6 to -0.2**: Moderately bearish
-- **-0.2 to +0.2**: Neutral / mixed signals
-- **+0.2 to +0.6**: Moderately bullish
-- **+0.6 to +1.0**: Strong bullish signal (e.g., robust expansion, easing cycle)
+Sentiment scores range from -1.0 to +1.0. The meaning depends on node type:
+
+**For asset/growth nodes** (equities, GDP, earnings, consumer confidence, etc.):
+- **+1.0** = very bullish (prices rising, strong growth)
+- **-1.0** = very bearish (prices falling, contraction)
+
+**For risk/stress nodes** (VIX, credit spreads, geopolitical risk, CDS, put/call ratio, \
+unemployment, inflation, MOVE, SKEW, sanctions, political risk, trade tariffs):
+- **+1.0** = risk/stress is ELEVATED (high VIX, wide spreads, high geopolitical tension)
+- **-1.0** = risk/stress is LOW (calm markets, tight spreads, low tension)
+- This means: for risk nodes, positive sentiment = bad for markets, negative = good for markets
+
+**General scale:**
+- **|0.6 to 1.0|**: Strong signal with high conviction
+- **|0.2 to 0.6|**: Moderate signal
+- **|0.0 to 0.2|**: Neutral / mixed signals
 
 ### Self-Calibration
 - Your previous analyses and prediction track record are injected into this prompt
@@ -79,17 +92,18 @@ After planning, you'll move to the analysis phase where you fetch data and updat
 """
 
 ANALYSIS_PROMPT_TEMPLATE = """\
-Now proceed with your analysis. Fetch data and update sentiment for these nodes:
+Now analyze the pre-fetched data above and update sentiment for these nodes:
 
 **Nodes to analyze:** {node_ids}
 
-Key FRED series: FEDFUNDS, CPIAUCSL, GDP, UNRATE, T10Y2Y, VIXCLS, DTWEXBGS, BAMLH0A0HYM2, BAMLC0A0CM, DGS2, DGS10, DGS30, DCOILWTICO
-Market tickers: SPY, QQQ, IWM, XLK, XLE, XLF, GLD, SLV, USO, UNG, HG=F, ZW=F, DX-Y.NYB
-
-**CRITICAL:** You MUST call `update_sentiment_signal` for EVERY node you analyze. \
-Do NOT just describe your analysis in text — you must write sentiment to the graph via tool calls. \
-After fetching data, immediately start calling `update_sentiment_signal` for each node. \
-Do not stop until you have updated all requested nodes.
+**EFFICIENCY RULES (you have ~25 total tool calls — use them wisely):**
+- DO NOT call `fetch_fred_data`, `fetch_market_prices`, or `search_news` — all data is already \
+pre-fetched in the "Pre-Fetched Data Package" section above. Only fetch more if a specific topic \
+needs deeper investigation beyond what's provided.
+- MUST use `batch_update_sentiment` to update ALL nodes. Group by category (macro, rates, equities, \
+commodities, currencies, volatility, etc.) — aim for 3-5 batch calls covering all nodes.
+- Do NOT use individual `update_sentiment_signal` — it wastes your tool call budget.
+- Do NOT stop until you have updated all requested nodes.
 
 **USE THE PRE-FETCHED NEWS HEADLINES.** The "Top News Headlines" section in your context contains \
 real-time RSS headlines from T1/T2/T3 sources mapped to specific nodes. You MUST incorporate these \
@@ -100,12 +114,10 @@ When a headline is relevant to a node you're updating:
 - Adjust `source_agreement` based on whether headlines agree with FRED/market data
 - Headlines from T1 sources that contradict your regime-based assessment should cause you to revise
 
-For each `update_sentiment_signal` call, provide:
+For each node in a `batch_update_sentiment` call, provide:
 - Sentiment score with evidence citing specific data points (FRED values, market prices, AND headlines)
 - Confidence breakdown (data_freshness, source_agreement, signal_strength)
-- Sources list
-
-Work in batches: fetch data for a group of related nodes, then update them, then move to the next group.\
+- Sources list\
 """
 
 VALIDATION_PROMPT = """\

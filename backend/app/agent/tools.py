@@ -227,8 +227,13 @@ async def _update_sentiment_core(
     source_agreement: float | None = None,
     signal_strength: float | None = None,
     data_sources: dict | None = None,
+    skip_propagation: bool = False,
 ) -> dict:
-    """Core sentiment update logic (no lock, no commit). Returns result dict."""
+    """Core sentiment update logic (no lock, no commit). Returns result dict.
+
+    Args:
+        skip_propagation: If True, skip propagation (for batch updates that propagate once at end).
+    """
     sentiment = clamp_sentiment(sentiment)
 
     # Compute confidence from decomposition if provided, otherwise use raw value
@@ -284,6 +289,16 @@ async def _update_sentiment_core(
     if node_id in graph:
         graph.nodes[node_id]["composite_sentiment"] = sentiment
         graph.nodes[node_id]["confidence"] = confidence
+
+    if skip_propagation:
+        return {
+            "status": "updated",
+            "node_id": node_id,
+            "sentiment": sentiment,
+            "confidence": confidence,
+            "propagated_to": 0,
+            "impacts": {},
+        }
 
     # Run propagation (regime-aware)
     from app.graph_engine.regimes import detect_regime
@@ -342,10 +357,16 @@ async def batch_update_sentiment(
     graph: nx.DiGraph,
     source_map: dict | None = None,
 ) -> str:
-    """Update sentiment for multiple nodes in one call (single lock + commit)."""
+    """Update sentiment for multiple nodes in one call (single lock + commit).
+
+    Defers propagation until all individual updates are applied, then runs a
+    single propagation pass to avoid cascading double-count.
+    """
     from app.main import app_state
     results = []
+    updated_nodes: list[tuple[str, float]] = []  # (node_id, sentiment) for deferred propagation
     async with app_state.graph_lock:
+        # Phase 1: Apply all sentiment updates WITHOUT propagation
         for u in updates:
             try:
                 nid = u["node_id"]
@@ -362,10 +383,33 @@ async def batch_update_sentiment(
                     source_agreement=u.get("source_agreement"),
                     signal_strength=u.get("signal_strength"),
                     data_sources=node_data_sources,
+                    skip_propagation=True,
                 )
                 results.append(result)
+                if result.get("status") == "updated":
+                    updated_nodes.append((nid, u["sentiment"]))
             except Exception as e:
                 results.append({"node_id": u.get("node_id"), "error": str(e)})
+
+        # Phase 2: Run propagation once for all updated nodes
+        total_propagated = 0
+        if updated_nodes:
+            from app.graph_engine.regimes import detect_regime
+            regime = detect_regime(graph)
+            for nid, sentiment in updated_nodes:
+                prop_result = propagate_signal(graph, nid, sentiment, regime=regime.state.value)
+                # Update propagated nodes in DB
+                for target_id, impact in prop_result.impacts.items():
+                    target_result = await session.execute(select(Node).where(Node.id == target_id))
+                    target_node = target_result.scalar_one_or_none()
+                    if target_node:
+                        blend = settings.propagation_blend_ratio
+                        blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
+                        target_node.composite_sentiment = clamp_sentiment(blended)
+                        if target_id in graph:
+                            graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
+                total_propagated += len(prop_result.impacts)
+
         await session.commit()
 
     succeeded = sum(1 for r in results if r.get("status") == "updated")
@@ -374,6 +418,7 @@ async def batch_update_sentiment(
         "batch_size": len(updates),
         "succeeded": succeeded,
         "failed": failed,
+        "total_propagated": total_propagated,
         "results": results,
     })
 
@@ -431,11 +476,9 @@ async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
     """Return a graph-wide state summary for the agent's planning phase."""
     from app.graph_engine.anomalies import detect_anomalies
     from app.graph_engine.regimes import detect_regime
+    from app.main import app_state
 
-    # Current regime
-    regime = detect_regime(graph)
-
-    # Anomalies (last 30 days, 2σ)
+    # Anomalies (last 30 days, 2σ) — DB query, no lock needed
     anomalies = await detect_anomalies(session, lookback_days=30, z_threshold=2.0)
     anomaly_summary = [
         {"node_id": a.node_id, "z_score": a.z_score, "direction": a.direction}
@@ -461,22 +504,24 @@ async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
 
     latest_by_node: dict[str, datetime] = {node_id: latest_at for node_id, latest_at in rows}
 
-    # Stale nodes (no observation in 24h)
-    all_node_ids = list(graph.nodes)
-    stale_nodes = [
-        nid for nid in all_node_ids
-        if nid not in latest_by_node or latest_by_node[nid] < cutoff_24h
-    ]
+    # Read graph state under lock to prevent torn reads
+    async with app_state.graph_lock:
+        regime = detect_regime(graph)
+        all_node_ids = list(graph.nodes)
 
-    # Recently changed nodes (observation in last 6h)
-    recent_nodes = []
-    for nid in all_node_ids:
-        if nid in latest_by_node and latest_by_node[nid] >= cutoff_6h:
-            sentiment = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
-            recent_nodes.append({"node_id": nid, "sentiment": round(sentiment, 3)})
+        stale_nodes = [
+            nid for nid in all_node_ids
+            if nid not in latest_by_node or latest_by_node[nid] < cutoff_24h
+        ]
 
-    # Node priority ranking: centrality × staleness indicator
-    centrality = nx.degree_centrality(graph)
+        recent_nodes = []
+        for nid in all_node_ids:
+            if nid in latest_by_node and latest_by_node[nid] >= cutoff_6h:
+                sentiment = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
+                recent_nodes.append({"node_id": nid, "sentiment": round(sentiment, 3)})
+
+        centrality = nx.degree_centrality(graph)
+
     priority = []
     for nid in all_node_ids:
         c = centrality.get(nid, 0.0)
@@ -527,57 +572,61 @@ async def validate_consistency(
     graph: nx.DiGraph,
 ) -> str:
     """Check for logical contradictions among recently-updated nodes."""
+    from app.main import app_state
+
     contradictions = []
     updated_set = set(node_ids)
 
-    for node_id in node_ids:
-        if node_id not in graph:
-            continue
+    # Read all graph state under lock to prevent torn reads
+    async with app_state.graph_lock:
+        for node_id in node_ids:
+            if node_id not in graph:
+                continue
 
-        node_sentiment = graph.nodes[node_id].get("composite_sentiment", 0.0) or 0.0
-        node_label = graph.nodes[node_id].get("label", node_id)
+            node_sentiment = graph.nodes[node_id].get("composite_sentiment", 0.0) or 0.0
+            node_label = graph.nodes[node_id].get("label", node_id)
 
-        # Check outgoing edges — include updated nodes AND direct neighbors with sentiment
-        for _, target, edge_data in graph.out_edges(node_id, data=True):
-            target_sentiment = graph.nodes[target].get("composite_sentiment", 0.0) or 0.0
-            if target not in updated_set and abs(target_sentiment) < 0.15:
-                continue  # Skip unchanged neighbors with negligible sentiment
+            # Check outgoing edges — include updated nodes AND direct neighbors with sentiment
+            for _, target, edge_data in graph.out_edges(node_id, data=True):
+                target_sentiment = graph.nodes[target].get("composite_sentiment", 0.0) or 0.0
+                if target not in updated_set and abs(target_sentiment) < 0.15:
+                    continue  # Skip unchanged neighbors with negligible sentiment
 
-            target_label = graph.nodes[target].get("label", target)
-            direction = edge_data.get("direction", "positive")
-            if hasattr(direction, "value"):
-                direction = direction.value
+                target_label = graph.nodes[target].get("label", target)
+                direction = edge_data.get("direction", "positive")
+                if hasattr(direction, "value"):
+                    direction = direction.value
 
-            if _check_contradiction(node_sentiment, target_sentiment, direction):
-                expected = "same" if direction == "positive" else "opposite"
-                contradictions.append({
-                    "type": "direction_mismatch",
-                    "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                    "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
-                    "edge_direction": direction,
-                    "explanation": f"{node_label} ({node_sentiment:+.2f}) has {direction.upper()} edge to {target_label} ({target_sentiment:+.2f}), but they have {expected} signs expected — contradiction detected.",
-                })
+                if _check_contradiction(node_sentiment, target_sentiment, direction):
+                    expected = "same" if direction == "positive" else "opposite"
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "target": {"id": target, "label": target_label, "sentiment": round(target_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{node_label} ({node_sentiment:+.2f}) has {direction.upper()} edge to {target_label} ({target_sentiment:+.2f}), but they have {expected} signs expected — contradiction detected.",
+                    })
 
-        # Check incoming edges — include updated nodes AND unchanged neighbors with sentiment
-        for source, _, edge_data in graph.in_edges(node_id, data=True):
-            source_sentiment = graph.nodes[source].get("composite_sentiment", 0.0) or 0.0
-            if source not in updated_set and abs(source_sentiment) < 0.15:
-                continue  # Skip unchanged neighbors with negligible sentiment
+            # Check incoming edges — include updated nodes AND unchanged neighbors with sentiment
+            for source, _, edge_data in graph.in_edges(node_id, data=True):
+                source_sentiment = graph.nodes[source].get("composite_sentiment", 0.0) or 0.0
+                if source not in updated_set and abs(source_sentiment) < 0.15:
+                    continue  # Skip unchanged neighbors with negligible sentiment
 
-            source_label = graph.nodes[source].get("label", source)
-            direction = edge_data.get("direction", "positive")
-            if hasattr(direction, "value"):
-                direction = direction.value
+                source_label = graph.nodes[source].get("label", source)
+                direction = edge_data.get("direction", "positive")
+                if hasattr(direction, "value"):
+                    direction = direction.value
 
-            if _check_contradiction(source_sentiment, node_sentiment, direction):
-                expected = "same" if direction == "positive" else "opposite"
-                contradictions.append({
-                    "type": "direction_mismatch",
-                    "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
-                    "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
-                    "edge_direction": direction,
-                    "explanation": f"{source_label} ({source_sentiment:+.2f}) has {direction.upper()} edge to {node_label} ({node_sentiment:+.2f}), {expected} signs expected — contradiction detected.",
-                })
+                if _check_contradiction(source_sentiment, node_sentiment, direction):
+                    expected = "same" if direction == "positive" else "opposite"
+                    contradictions.append({
+                        "type": "direction_mismatch",
+                        "source": {"id": source, "label": source_label, "sentiment": round(source_sentiment, 3)},
+                        "target": {"id": node_id, "label": node_label, "sentiment": round(node_sentiment, 3)},
+                        "edge_direction": direction,
+                        "explanation": f"{source_label} ({source_sentiment:+.2f}) has {direction.upper()} edge to {node_label} ({node_sentiment:+.2f}), {expected} signs expected — contradiction detected.",
+                    })
 
     # Deduplicate by source-target pair
     seen = set()
