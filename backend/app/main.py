@@ -100,9 +100,13 @@ async def seed_graph_if_empty():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    # Startup: create tables + auto-fix schema drift
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Detect and fix column mismatches (e.g., upstream added a column to a model
+        # but create_all doesn't alter existing tables — only creates new ones)
+        from app.db.schema_sync import sync_schemas
+        await sync_schemas(conn)
     await seed_graph_if_empty()
     logger.info("Graph loaded: %d nodes, %d edges", app_state.graph.number_of_nodes(), app_state.graph.number_of_edges())
 
