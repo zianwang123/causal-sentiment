@@ -258,7 +258,7 @@ def _broadcast_progress(
     """Broadcast agent progress via WebSocket (fire-and-forget)."""
     try:
         from app.api.websocket import manager
-        asyncio.create_task(manager.broadcast({
+        task = asyncio.create_task(manager.broadcast({
             "type": "agent_progress",
             "data": {
                 "round": round_num + 1,
@@ -268,6 +268,7 @@ def _broadcast_progress(
                 "total_tool_calls": len(tool_calls_log),
             },
         }))
+        task.add_done_callback(lambda t: t.exception() and logger.debug("Broadcast failed: %s", t.exception()) if not t.cancelled() else None)
     except Exception as e:
         logger.debug("Failed to broadcast agent progress: %s", e)
 

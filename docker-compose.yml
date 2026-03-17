@@ -34,7 +34,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
       FRED_API_KEY: ${FRED_API_KEY:-}

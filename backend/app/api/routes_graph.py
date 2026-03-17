@@ -593,7 +593,7 @@ async def generate_regime_narrative(
     # Detect regime transition
     transition_info = ""
     if len(history) >= 2:
-        prev_state = history[-2]["state"] if len(history) >= 2 else None
+        prev_state = history[-2]["state"]
         if prev_state and prev_state != regime.state.value:
             transition_info = f"The regime recently shifted from {prev_state} to {regime.state.value}."
 

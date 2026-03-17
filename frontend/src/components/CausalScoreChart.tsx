@@ -35,14 +35,18 @@ export default function CausalScoreChart({
 
   // Fetch history data
   useEffect(() => {
+    const controller = new AbortController();
     setLoading(true);
-    fetch(`${API}/api/causal/node/${nodeId}?scoring=${scoring}&days=${range}`)
+    fetch(`${API}/api/causal/node/${nodeId}?scoring=${scoring}&days=${range}`, { signal: controller.signal })
       .then((r) => r.json())
       .then((d: CausalHistoryResponse) => {
         setData(d.history ?? []);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((e) => {
+        if (e.name !== "AbortError") setLoading(false);
+      });
+    return () => controller.abort();
   }, [nodeId, scoring, range]);
 
   // Render chart

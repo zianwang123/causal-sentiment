@@ -157,9 +157,17 @@ def _yahoo_direct_download_single(ticker: str, period: str = "5y") -> pd.Series 
             return None
 
         data = r.json()
-        chart = data["chart"]["result"][0]
-        timestamps = chart["timestamp"]
-        closes = chart["indicators"]["quote"][0]["close"]
+        results = data.get("chart", {}).get("result")
+        if not results:
+            logger.warning("Yahoo API returned no chart results for %s", ticker)
+            return None
+        chart = results[0]
+        timestamps = chart.get("timestamp")
+        quotes = chart.get("indicators", {}).get("quote")
+        if not timestamps or not quotes:
+            logger.warning("Yahoo API missing timestamp/quote data for %s", ticker)
+            return None
+        closes = quotes[0].get("close")
 
         dates = [datetime.fromtimestamp(ts, tz=timezone.utc) for ts in timestamps]
         series = pd.Series(closes, index=pd.DatetimeIndex(dates), name=ticker, dtype=float)

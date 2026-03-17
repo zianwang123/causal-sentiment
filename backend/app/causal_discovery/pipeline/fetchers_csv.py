@@ -144,6 +144,10 @@ async def fetch_gpr_index(
         # Normalize column names to lowercase for flexible matching.
         df.columns = [str(c).strip().lower() for c in df.columns]
 
+        if df.empty:
+            logger.warning("GPR data: downloaded file is empty")
+            return None
+
         # Find date column
         date_col = None
         for c in df.columns:
@@ -240,6 +244,10 @@ async def fetch_cboe_put_call() -> list[dict]:
         df = pd.read_csv(io.StringIO(resp.text))
         df.columns = [str(c).strip().lower() for c in df.columns]
 
+        if df.empty:
+            logger.warning("Put/Call data: downloaded file is empty")
+            return None
+
         # Look for date and put/call columns
         date_col = None
         for c in df.columns:
@@ -314,6 +322,10 @@ async def fetch_aaii_sentiment() -> list[dict]:
 
         df = pd.read_excel(io.BytesIO(resp.content), engine="xlrd")
         df.columns = [str(c).strip().lower() for c in df.columns]
+
+        if df.empty:
+            logger.warning("AAII sentiment data: downloaded file is empty")
+            return None
 
         # Find date column
         date_col = None
