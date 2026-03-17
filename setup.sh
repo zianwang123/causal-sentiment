@@ -32,7 +32,8 @@ echo "Starting DB + Redis..."
 docker-compose up db redis -d
 
 echo "Waiting for DB to be ready..."
-until docker exec causal-sentiment-db-1 pg_isready -U cs_user -q 2>/dev/null; do
+DB_CONTAINER=$(docker-compose ps -q db)
+until docker exec "$DB_CONTAINER" pg_isready -U cs_user -q 2>/dev/null; do
   sleep 1
 done
 echo "DB ready"

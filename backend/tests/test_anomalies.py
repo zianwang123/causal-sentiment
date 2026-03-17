@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -63,7 +63,7 @@ def test_extract_numeric_invalid_close():
 
 def _make_observations(node_id: str, values: list[float]) -> list:
     """Create mock SentimentObservation objects with raw_data close prices."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     obs_list = []
     for i, v in enumerate(values):
         obs = MagicMock()

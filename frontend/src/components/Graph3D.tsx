@@ -165,7 +165,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     const node = nodes.find((n) => n.id === focusNodeId) as any;
     if (node && node.x !== undefined) {
       const distance = 200;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+      const distRatio = 1 + distance / Math.hypot(node.x, node.y ?? 0, node.z ?? 0);
       graphRef.current.cameraPosition(
         {
           x: node.x * distRatio,
@@ -207,7 +207,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       // Focus camera on clicked node
       if (graphRef.current && node.x !== undefined) {
         const distance = 200;
-        const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+        const distRatio = 1 + distance / Math.hypot(node.x, node.y ?? 0, node.z ?? 0);
         graphRef.current.cameraPosition(
           {
             x: node.x * distRatio,

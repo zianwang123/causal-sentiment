@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -109,7 +109,7 @@ async def trigger_analysis(
         nodes_analyzed=node_ids,
         tool_calls=None,
         summary=None,
-        started_at=datetime.utcnow(),
+        started_at=datetime.now(UTC),
         finished_at=None,
         error=None,
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 import networkx as nx
@@ -143,13 +143,13 @@ def _mock_news(query: str) -> list[dict]:
         {
             "title": f"Markets react to latest {query} developments",
             "source": "Mock Financial Times",
-            "published_at": datetime.utcnow().isoformat(),
+            "published_at": datetime.now(UTC).isoformat(),
             "description": f"Analysts are closely watching {query} for signals about the economic outlook.",
         },
         {
             "title": f"What {query} means for investors in 2026",
             "source": "Mock Reuters",
-            "published_at": datetime.utcnow().isoformat(),
+            "published_at": datetime.now(UTC).isoformat(),
             "description": f"A deep dive into how {query} is shaping market expectations.",
         },
     ]
@@ -218,7 +218,7 @@ async def update_sentiment_signal(
 
     node.composite_sentiment = sentiment
     node.confidence = confidence
-    evidence_entry = {"text": evidence, "timestamp": datetime.utcnow().isoformat(), "sources": sources or []}
+    evidence_entry = {"text": evidence, "timestamp": datetime.now(UTC).isoformat(), "sources": sources or []}
     if data_freshness is not None:
         evidence_entry["confidence_breakdown"] = {
             "data_freshness": round(data_freshness, 2),
@@ -269,7 +269,7 @@ async def update_sentiment_signal(
                 if target_id in graph:
                     graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
 
-    await session.commit()
+        await session.commit()
 
     return json.dumps({
         "status": "updated",
@@ -347,20 +347,22 @@ async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
 
     # Data freshness: last observation time per node
     from datetime import timedelta
-    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
-    cutoff_6h = datetime.utcnow() - timedelta(hours=6)
+    cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
+    cutoff_6h = datetime.now(UTC) - timedelta(hours=6)
 
-    result = await session.execute(
-        select(SentimentObservation.node_id, SentimentObservation.created_at, SentimentObservation.source)
-        .order_by(SentimentObservation.created_at.desc())
+    from sqlalchemy import func as sa_func
+    subq = (
+        select(
+            SentimentObservation.node_id,
+            sa_func.max(SentimentObservation.created_at).label("latest_at"),
+        )
+        .group_by(SentimentObservation.node_id)
+        .subquery()
     )
+    result = await session.execute(select(subq.c.node_id, subq.c.latest_at))
     rows = result.all()
 
-    # Track latest observation per node
-    latest_by_node: dict[str, datetime] = {}
-    for node_id, created_at, source in rows:
-        if node_id not in latest_by_node:
-            latest_by_node[node_id] = created_at
+    latest_by_node: dict[str, datetime] = {node_id: latest_at for node_id, latest_at in rows}
 
     # Stale nodes (no observation in 24h)
     all_node_ids = list(graph.nodes)

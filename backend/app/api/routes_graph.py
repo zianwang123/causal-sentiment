@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator as pydantic_field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,7 +96,9 @@ async def get_node(node_id: str, session: AsyncSession = Depends(get_session)):
     from app.main import app_state
 
     result = await session.execute(select(Node).where(Node.id == node_id))
-    node = result.scalar_one()
+    node = result.scalar_one_or_none()
+    if node is None:
+        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
     centralities = compute_centralities(app_state.graph)
 
     return NodeOut(
@@ -341,7 +343,7 @@ async def get_sentiment_history(
     session: AsyncSession = Depends(get_session),
 ):
     """Return sentiment observation history for a node."""
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     result = await session.execute(
         select(SentimentObservation)
         .where(SentimentObservation.node_id == node_id)
@@ -504,7 +506,7 @@ async def accept_suggestion(
     session.add(new_edge)
 
     suggestion.status = "accepted"
-    suggestion.reviewed_at = datetime.utcnow()
+    suggestion.reviewed_at = datetime.now(UTC)
 
     await session.commit()
 
@@ -542,7 +544,7 @@ async def reject_suggestion(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     suggestion.status = "rejected"
-    suggestion.reviewed_at = datetime.utcnow()
+    suggestion.reviewed_at = datetime.now(UTC)
     await session.commit()
 
     return {"status": "rejected"}
@@ -835,7 +837,7 @@ async def update_annotation(
         annotation.text = body.text
     if body.pinned is not None:
         annotation.pinned = body.pinned
-    annotation.updated_at = datetime.utcnow()
+    annotation.updated_at = datetime.now(UTC)
 
     await session.commit()
     await session.refresh(annotation)

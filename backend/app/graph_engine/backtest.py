@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from sqlalchemy import select
@@ -44,7 +44,7 @@ async def backtest_node(
     """
     result = BacktestResult(node_id=node_id)
 
-    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+    cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
 
     # Get agent sentiment observations
     sent_result = await session.execute(

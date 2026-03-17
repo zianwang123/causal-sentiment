@@ -61,6 +61,7 @@ class WebSocketClient {
       if (this.ws?.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({ type: "ping" }));
         // If no response within 10 seconds, consider connection dead
+        this.resetHeartbeatTimeout();
         this.heartbeatTimeout = setTimeout(() => {
           console.log("[WS] Heartbeat timeout, closing connection");
           this.ws?.close();

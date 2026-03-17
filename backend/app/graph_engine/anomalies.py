@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import numpy as np
 from sqlalchemy import select
@@ -42,7 +42,7 @@ async def detect_anomalies(
     min_obs = settings.anomaly_min_observations
 
     # Get all nodes with recent observations
-    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+    cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
     result = await session.execute(
         select(SentimentObservation)
         .where(SentimentObservation.created_at >= cutoff)
@@ -89,7 +89,7 @@ async def detect_anomalies(
                 mean=round(mean, 4),
                 std=round(std, 4),
                 direction="up" if z_score > 0 else "down",
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(UTC),
             ))
 
     anomalies.sort(key=lambda a: abs(a.z_score), reverse=True)

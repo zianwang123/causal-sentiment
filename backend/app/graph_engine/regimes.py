@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 import networkx as nx
@@ -88,7 +88,7 @@ async def get_regime_history(
     """Get regime history from DB."""
     from app.models.observations import RegimeSnapshot
 
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     result = await session.execute(
         select(RegimeSnapshot)
         .where(RegimeSnapshot.detected_at >= cutoff)

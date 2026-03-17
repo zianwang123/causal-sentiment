@@ -86,7 +86,7 @@ export default function CausalPanel() {
         loadGraph(defaultMatch.id);
       }
     },
-    [setGraphSource, fetchExpertGraph, currentGraph, snapshots, loadGraph],
+    [setGraphSource, fetchExpertGraph, currentGraph, snapshots, loadGraph, algorithm, scoring],
   );
 
   // Poll discovery status

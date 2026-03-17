@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import networkx as nx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -83,7 +83,7 @@ async def run_analysis(
     if provider == "openai" and not settings.openai_api_key:
         agent_run = AgentRun(
             trigger=trigger, status="error", nodes_analyzed=node_ids,
-            error="OPENAI_API_KEY not configured", finished_at=datetime.utcnow(),
+            error="OPENAI_API_KEY not configured", finished_at=datetime.now(UTC),
         )
         session.add(agent_run)
         await session.commit()
@@ -91,7 +91,7 @@ async def run_analysis(
     elif provider == "anthropic" and not settings.anthropic_api_key:
         agent_run = AgentRun(
             trigger=trigger, status="error", nodes_analyzed=node_ids,
-            error="ANTHROPIC_API_KEY not configured", finished_at=datetime.utcnow(),
+            error="ANTHROPIC_API_KEY not configured", finished_at=datetime.now(UTC),
         )
         session.add(agent_run)
         await session.commit()
@@ -224,7 +224,7 @@ async def run_analysis(
 
         agent_run.status = "completed"
         agent_run.tool_calls = tool_calls_log
-        agent_run.finished_at = datetime.utcnow()
+        agent_run.finished_at = datetime.now(UTC)
 
     except Exception as e:
         logger.exception("Agent run failed")
@@ -237,9 +237,10 @@ async def run_analysis(
             agent_run.status = "error"
             agent_run.error = str(e)[:2000]
             agent_run.tool_calls = tool_calls_log
-            agent_run.finished_at = datetime.utcnow()
+            agent_run.finished_at = datetime.now(UTC)
             session.add(agent_run)
             await session.commit()
+            return agent_run
         except Exception as commit_err:
             logger.error("Failed to persist agent error state: %s", commit_err)
             return agent_run
@@ -375,7 +376,7 @@ async def _build_memory_context(session: AsyncSession) -> str:
         prev_runs = result.scalars().all()
         if prev_runs:
             lines = []
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             for run in prev_runs:
                 ago = now - run.finished_at if run.finished_at else timedelta(0)
                 hours_ago = int(ago.total_seconds() / 3600)
