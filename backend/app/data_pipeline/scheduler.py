@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -235,6 +235,126 @@ async def scheduled_edgar_fetch():
         logger.exception("Scheduled EDGAR fetch failed: %s", e)
 
 
+async def scheduled_news_fetch():
+    """Fetch news from all RSS feeds, store as observations, detect trending topics."""
+    from app.data_pipeline.news import fetch_all_news_feeds, detect_trending_topics
+    from app.db.connection import async_session
+    from app.models.observations import SentimentObservation
+
+    logger.info("Scheduled news fetch starting")
+    try:
+        articles = await fetch_all_news_feeds()
+        if not articles:
+            logger.info("No news articles fetched")
+            return
+
+        async with async_session() as session:
+            count = 0
+            for article in articles:
+                for node_id in article.node_ids:
+                    obs = SentimentObservation(
+                        node_id=node_id,
+                        sentiment=0.0,  # Raw data — agent will interpret
+                        confidence=0.6 if article.tier <= 2 else 0.4,
+                        source="news_scheduled",
+                        evidence=f"[{article.source}] {article.title}",
+                        raw_data={
+                            "title": article.title,
+                            "description": article.description[:300],
+                            "source": article.source,
+                            "url": article.url,
+                            "published_at": article.published_at,
+                            "tier": article.tier,
+                            "node_scores": article.node_scores,
+                        },
+                    )
+                    session.add(obs)
+                    count += 1
+            await session.commit()
+            logger.info("News fetch complete: %d observations from %d articles", count, len(articles))
+
+        # Detect trending topics and auto-trigger agent
+        trending = detect_trending_topics(articles, min_sources=3)
+        if trending:
+            trending_node_ids = [t["node_id"] for t in trending[:5]]
+            logger.info(
+                "Trending topics detected (%d nodes, top: %s) — triggering agent",
+                len(trending), trending_node_ids[:3],
+            )
+            try:
+                from app.main import app_state
+                from app.db.connection import async_session as _async_session
+                async with _async_session() as session:
+                    await run_analysis(
+                        node_ids=trending_node_ids,
+                        session=session,
+                        graph=app_state.graph,
+                        trigger="trending_news",
+                    )
+            except Exception as e:
+                logger.exception("Trending news agent trigger failed: %s", e)
+
+        await _check_anomalies_and_trigger()
+    except Exception as e:
+        logger.exception("Scheduled news fetch failed: %s", e)
+
+
+async def scheduled_morning_brief():
+    """Generate and broadcast the daily morning brief."""
+    from app.db.connection import async_session
+    from app.graph_engine.anomalies import detect_anomalies
+    from app.graph_engine.regimes import detect_regime, get_regime_history
+    from app.graph_engine.propagation import propagate_signal
+    from app.config import settings
+
+    logger.info("Scheduled morning brief starting")
+    try:
+        from app.main import app_state
+        graph = app_state.graph
+        now = datetime.utcnow()
+        yesterday = now - timedelta(hours=24)
+
+        async with async_session() as session:
+            anomalies = await detect_anomalies(session, lookback_days=1, z_threshold=1.0)
+            movers = [
+                {
+                    "node_id": a.node_id,
+                    "label": graph.nodes[a.node_id].get("label", a.node_id) if a.node_id in graph else a.node_id,
+                    "direction": a.direction,
+                    "z_score": round(a.z_score, 2),
+                }
+                for a in anomalies[:10]
+            ]
+
+            from sqlalchemy import select as sa_select
+            result = await session.execute(
+                sa_select(Prediction).where(Prediction.resolved_at >= yesterday)
+            )
+            resolved_preds = result.scalars().all()
+            hits = sum(1 for p in resolved_preds if p.hit == 1)
+            misses = sum(1 for p in resolved_preds if p.hit == 0)
+
+            regime = detect_regime(graph)
+
+        logger.info(
+            "Morning brief: %d movers, %d predictions resolved, regime=%s",
+            len(movers), len(resolved_preds), regime.state.value,
+        )
+
+        from app.api.websocket import manager
+        await manager.broadcast({
+            "type": "morning_brief",
+            "data": {
+                "generated_at": now.isoformat(),
+                "overnight_movers": movers,
+                "prediction_summary": {"total": len(resolved_preds), "hits": hits, "misses": misses},
+                "regime": {"state": regime.state.value, "confidence": regime.confidence},
+            },
+        })
+    except Exception as e:
+        logger.exception("Scheduled morning brief failed: %s", e)
+
+
 async def scheduled_reddit_fetch():
     """Fetch Reddit posts and store as observations for relevant nodes."""
     from app.data_pipeline.reddit import fetch_reddit_posts
@@ -373,6 +493,12 @@ def setup_scheduler() -> AsyncIOScheduler:
         scheduled_agent_analysis,
         IntervalTrigger(hours=6),
         id="agent_analysis",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_news_fetch,
+        IntervalTrigger(hours=2),
+        id="news_fetch",
         replace_existing=True,
     )
     scheduler.add_job(

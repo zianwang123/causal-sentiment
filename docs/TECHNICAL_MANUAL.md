@@ -604,6 +604,8 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 | Weight recalculation | Daily at 3 AM UTC | Recomputes dynamic weights from Pearson correlations |
 | Regime check | Every 2 hours | Detects regime, broadcasts via WebSocket |
 | Sentiment decay | Daily at 2 AM UTC | Applies 24h half-life exponential decay |
+| News fetch | Every 2 hours | Fetches 27 RSS feeds, stores articles as observations, detects trending topics |
+| Morning brief | Daily at 7 AM UTC | Generates overnight movers, prediction scorecard, regime status, LLM narrative |
 | Prediction resolution | Every 1 hour | Resolves expired predictions (no LLM cost) |
 
 ### FRED Series Mapping
@@ -643,14 +645,50 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 | ZW=F | wheat | Wheat Futures |
 | DX-Y.NYB | dxy_index | Dollar Index |
 
-### Reddit Keyword Matching
+### RSS News Pipeline
 
-Posts are matched to nodes via naive substring matching (case-insensitive). Examples:
-- "fed" or "federal reserve" → fed_funds_rate
-- "inflation" or "cpi" → us_cpi_yoy
-- "oil" or "crude" → wti_crude
+The system fetches news from **27 curated RSS feeds** — no API key required. Feeds are organized into two groups:
 
-**Known limitation:** "war" matches "software" and "warrant". NLP entity extraction would be better.
+**Dedicated financial feeds (10):** Federal Reserve, Bloomberg Markets, CNBC (Top News + Economy), Yahoo Finance, OilPrice.com, Mining.com, Seeking Alpha, ZeroHedge, Investing.com.
+
+**Google News topic feeds (17):** Custom search queries for: Federal Reserve, oil prices, stock market, inflation/CPI, central banks, commodities, geopolitics, interest rates, jobs, forex, earnings, FOMC, credit spreads, volatility/VIX, tariffs/trade, housing, China economy.
+
+**Source reliability tiers** are passed to the agent so it weighs evidence appropriately:
+- **T1 (wire/official):** Federal Reserve, Bloomberg — highest credibility
+- **T2 (major outlet):** CNBC, Yahoo Finance, Google News aggregated — high credibility
+- **T3 (specialist):** ZeroHedge, Seeking Alpha, OilPrice — require corroboration
+
+**Deduplication:** Jaccard similarity on titles (>60% overlap = duplicate). When duplicates are found, the article from the higher-tier source is kept.
+
+**Trending detection:** After each fetch, articles are grouped by node_id. If 3+ unique sources cover the same node, it's flagged as trending and the agent is auto-triggered on those nodes.
+
+### Keyword → Node Matching
+
+A shared `keyword_matcher.py` module is used by both the news and Reddit pipelines. Improvements over naive substring matching:
+
+1. **Word boundary regex:** `\bwar\b` won't match "software" or "warrant"
+2. **Multi-word phrase priority:** "federal reserve" (weight 2.0) scores higher than "fed" (weight 0.8)
+3. **Negative keyword exclusions:** e.g., "gold" excludes "golden", "goldfish"; "war" excludes "software", "warrant", "star wars"
+4. **Confidence scoring:** headline match = 1.0× weight, body match = 0.5× weight. Multiple keywords for the same node accumulate (capped at 1.0). Only mapped if confidence ≥ 0.3.
+
+80+ keyword rules covering all 52 nodes.
+
+### Morning Brief
+
+A daily intelligence summary generated on-demand or scheduled (7 AM UTC). Contains:
+1. **Overnight movers** — nodes with >1σ moves in the last 24 hours (from `detect_anomalies`)
+2. **Prediction scorecard** — predictions resolved in the last 24 hours with hit/miss counts
+3. **Regime status** — current state (risk-on/risk-off/transitioning), confidence, and whether a transition occurred
+4. **Propagation paths** — top 3 movers' cascade impact through the causal graph
+5. **LLM narrative** — 4-6 sentence macro summary tying all sections together
+
+### Automation Toggles
+
+Two automations can be toggled on/off at runtime via `POST /api/agent/automations/toggle`:
+- **Background Scheduler** — all data-fetching jobs (FRED, market, news, Reddit, agent, weights, decay, regime, predictions)
+- **Morning Brief** — daily 7 AM UTC intelligence summary
+
+Toggles are independent — enabling the scheduler does not enable the morning brief, and vice versa. These are runtime-only changes; on restart, the system reverts to `.env` defaults (`SCHEDULER_ENABLED`).
 
 ### Retry Logic
 

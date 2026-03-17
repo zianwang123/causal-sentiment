@@ -100,41 +100,67 @@ async def fetch_market_prices(tickers: list[str] | None = None) -> str:
 
 
 async def search_news(query: str, max_results: int = 10) -> str:
-    """Search for financial news using NewsAPI."""
-    if not settings.newsapi_key:
-        return json.dumps({
-            "note": "NewsAPI key not configured. Returning mock headlines.",
-            "query": query,
-            "articles": _mock_news(query),
-        })
+    """Search for financial news using RSS feeds (free, no API key needed).
 
-    url = "https://newsapi.org/v2/everything"
-    params = {
-        "q": query,
-        "apiKey": settings.newsapi_key,
-        "sortBy": "publishedAt",
-        "pageSize": max_results,
-        "language": "en",
-    }
+    Falls back to NewsAPI if configured, or mock data as last resort.
+    """
+    from app.data_pipeline.news import fetch_news_for_query
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        try:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+    # Primary: RSS feeds (free, always available)
+    try:
+        rss_articles = await fetch_news_for_query(query, max_results=max_results)
+        if rss_articles:
+            _tier_labels = {1: "T1 (wire/official)", 2: "T2 (major outlet)", 3: "T3 (specialist)"}
             articles = [
                 {
-                    "title": a["title"],
-                    "source": a["source"]["name"],
-                    "published_at": a["publishedAt"],
-                    "description": a.get("description", ""),
+                    "title": a.title,
+                    "source": a.source,
+                    "published_at": a.published_at,
+                    "description": a.description[:300],
+                    "node_ids": a.node_ids,
+                    "tier": a.tier,
+                    "tier_label": _tier_labels.get(a.tier, "T2 (major outlet)"),
                 }
-                for a in data.get("articles", [])[:max_results]
+                for a in rss_articles
             ]
-            return json.dumps({"query": query, "articles": articles})
-        except Exception as e:
-            logger.error("NewsAPI error for '%s': %s", query, e)
-            return json.dumps({"error": str(e), "query": query})
+            return json.dumps({"query": query, "source": "rss", "articles": articles})
+    except Exception as e:
+        logger.warning("RSS news fetch failed for '%s': %s", query, e)
+
+    # Fallback: NewsAPI (requires API key)
+    if settings.newsapi_key:
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": query,
+            "apiKey": settings.newsapi_key,
+            "sortBy": "publishedAt",
+            "pageSize": max_results,
+            "language": "en",
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                articles = [
+                    {
+                        "title": a["title"],
+                        "source": a["source"]["name"],
+                        "published_at": a["publishedAt"],
+                        "description": a.get("description", ""),
+                    }
+                    for a in data.get("articles", [])[:max_results]
+                ]
+                return json.dumps({"query": query, "source": "newsapi", "articles": articles})
+            except Exception as e:
+                logger.error("NewsAPI error for '%s': %s", query, e)
+
+    # Last resort: mock data
+    return json.dumps({
+        "note": "No news sources available. Returning mock headlines.",
+        "query": query,
+        "articles": _mock_news(query),
+    })
 
 
 def _mock_news(query: str) -> list[dict]:

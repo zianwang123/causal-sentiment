@@ -45,6 +45,10 @@ This is exactly how a macro strategist thinks about positioning: "if X happens, 
 - **3D interactive visualization** — WebGL-powered, sentiment-colored, with directional particles showing causal flow
 - **What-if simulator** — shock any node, watch the cascade, see the full impact report
 - **AI agent** — Claude or GPT fetches real data (FRED, yfinance, news, Reddit, SEC) through a three-phase reasoning loop (Plan → Analyze → Validate) with self-calibration
+- **RSS news pipeline** — 27 curated financial RSS feeds (no API key needed): Fed, Bloomberg, CNBC, Google News topics. Enhanced keyword matching with word boundaries, exclusions, and confidence scoring. Source reliability tiers (T1 wire → T3 blog) inform agent reasoning
+- **Morning brief** — daily intelligence summary: overnight movers (>1σ), prediction scorecard, regime shifts, risk propagation paths, LLM-generated narrative
+- **Automation toggles** — runtime control of background scheduler and morning brief from the UI (no restart needed)
+- **News trending detection** — auto-triggers agent analysis when 3+ sources converge on the same topic
 - **Analyst annotations** — pin timestamped notes to any node, persisted across sessions
 - **Regime narrator** — LLM-generated macro narrative from bellwether indicators
 - **Prediction tracking** — agent records falsifiable predictions, system auto-resolves and tracks hit rate
@@ -71,11 +75,11 @@ Browser (localhost:3000)
 FastAPI Backend (localhost:8000)
   ├── AI Agent (Claude/GPT, 3-phase loop, 11 tools)
   ├── Graph Engine (NetworkX, propagation, anomalies, regimes)
-  ├── Data Pipeline (APScheduler, 9 jobs, disabled by default)
+  ├── Data Pipeline (APScheduler, 10 jobs, disabled by default)
   └── PostgreSQL + TimescaleDB + Redis
 
 External Data Sources:
-  FRED · yfinance · NewsAPI · Reddit · SEC EDGAR
+  FRED · yfinance · 27 RSS feeds · NewsAPI · Reddit · SEC EDGAR
 ```
 
 For detailed architecture, agent design, and concurrency model, see **[Technical Manual §2, §8, §17](docs/TECHNICAL_MANUAL.md)**.
@@ -103,7 +107,8 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 |--------|------|----------|
 | **FRED API** | Rates, CPI, GDP, unemployment, credit spreads (14 series) | Every 4h |
 | **yfinance** | Equities, ETFs, futures, forex (13 tickers) | Every 1h |
-| **NewsAPI** | Headlines and articles | On agent trigger |
+| **RSS Feeds** | 27 curated financial feeds (Fed, Bloomberg, CNBC, Google News topics) — free, no API key | Every 2h |
+| **NewsAPI** | Headlines and articles (optional fallback) | On agent trigger |
 | **Reddit** | Social sentiment (r/wallstreetbets, r/economics, r/stocks) | Every 2h |
 | **SEC EDGAR** | Earnings, financial filings | Daily |
 
@@ -150,7 +155,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
    REDDIT_CLIENT_SECRET=
    ```
 
-   > **Note:** Without `FRED_API_KEY` and `NEWSAPI_KEY`, the agent will use **mock data** for FRED macro series and news headlines. The agent is told the data is synthetic, so analysis results will be illustrative rather than based on real market conditions. Add your own API keys for real data — both are free: [FRED](https://fred.stlouisfed.org/docs/api/api_key.html), [NewsAPI](https://newsapi.org/register).
+   > **Note:** News works out of the box via **27 curated RSS feeds** (no API key needed). Without `FRED_API_KEY`, the agent uses **mock data** for FRED macro series — add your own for real data (free: [FRED](https://fred.stlouisfed.org/docs/api/api_key.html)). `NEWSAPI_KEY` is optional — RSS feeds are the primary news source, NewsAPI is a fallback.
 
 4. First-time install:
    ```bash
@@ -184,6 +189,8 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 | **Run analysis** | Click "Run Full Analysis" (all 52 nodes) |
 | **Deep dive** | Click a node → click "Deep Dive" for focused single-node analysis |
 | **Find a node** | Open "Nodes" in the bottom toolbar — search, sort, click to fly |
+| **Morning brief** | Click "Morning Brief" in the bottom toolbar → click "Generate" |
+| **Toggle automations** | In the top-left panel under "Automations" — flip scheduler and morning brief on/off |
 | **Switch LLM** | Toggle GPT/Claude in the top-left panel |
 | **Time travel** | Open "Time Travel" in the bottom toolbar |
 | **Portfolio** | Open "Portfolio" in the bottom toolbar to add positions |

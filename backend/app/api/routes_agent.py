@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -283,3 +283,326 @@ async def get_prediction_summary(
         mean_magnitude_score=mean_mag,
         by_direction=by_direction,
     )
+
+
+# ── Morning Brief ─────────────────────────────────────────────
+
+
+class MorningBriefResponse(BaseModel):
+    generated_at: str
+    overnight_movers: list[dict]
+    resolved_predictions: list[dict]
+    prediction_summary: dict
+    regime: dict
+    top_propagation_paths: list[dict]
+    narrative: str
+
+
+@router.post("/morning-brief", response_model=MorningBriefResponse)
+async def generate_morning_brief(
+    session: AsyncSession = Depends(get_session),
+):
+    """Generate a morning intelligence brief: overnight movers, predictions, regime, narrative."""
+    from app.main import app_state
+    from app.graph_engine.anomalies import detect_anomalies
+    from app.graph_engine.regimes import detect_regime, get_regime_history
+    from app.graph_engine.propagation import propagate_signal
+    from app.config import settings
+
+    graph = app_state.graph
+    now = datetime.utcnow()
+    yesterday = now - timedelta(hours=24)
+
+    # 1. Overnight movers (>1σ in last 24h)
+    anomalies = await detect_anomalies(session, lookback_days=1, z_threshold=1.0)
+    movers = [
+        {
+            "node_id": a.node_id,
+            "label": graph.nodes[a.node_id].get("label", a.node_id) if a.node_id in graph else a.node_id,
+            "direction": a.direction,
+            "z_score": round(a.z_score, 2),
+            "latest_value": round(a.latest_value, 4) if a.latest_value else None,
+        }
+        for a in anomalies[:10]
+    ]
+
+    # 2. Predictions resolved in last 24h
+    result = await session.execute(
+        select(Prediction)
+        .where(Prediction.resolved_at >= yesterday)
+        .order_by(Prediction.resolved_at.desc())
+    )
+    resolved_preds = result.scalars().all()
+    resolved_list = [
+        {
+            "node_id": p.node_id,
+            "predicted_direction": p.predicted_direction,
+            "predicted_sentiment": round(p.predicted_sentiment, 3),
+            "actual_sentiment": round(p.actual_sentiment, 3) if p.actual_sentiment is not None else None,
+            "hit": p.hit,
+            "reasoning": (p.reasoning or "")[:120],
+        }
+        for p in resolved_preds
+    ]
+    hits = sum(1 for p in resolved_preds if p.hit == 1)
+    misses = sum(1 for p in resolved_preds if p.hit == 0)
+
+    # 3. Regime
+    regime = detect_regime(graph)
+    history = await get_regime_history(session, days=1)
+    regime_changed = False
+    from_state = None
+    if len(history) >= 2:
+        prev = history[-2]["state"]
+        if prev and prev != regime.state.value:
+            regime_changed = True
+            from_state = prev
+
+    sorted_signals = sorted(
+        regime.contributing_signals.items(), key=lambda x: abs(x[1]), reverse=True
+    )
+    top_drivers = [s[0] for s in sorted_signals[:5]]
+
+    # 4. Propagation paths for top 3 movers
+    paths_list = []
+    for a in anomalies[:3]:
+        if a.node_id not in graph:
+            continue
+        try:
+            prop = propagate_signal(graph, a.node_id, a.z_score * 0.1, regime=regime.state.value)
+            top_impacts = sorted(prop.impacts.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+            paths_list.append({
+                "source": a.node_id,
+                "source_label": graph.nodes[a.node_id].get("label", a.node_id) if a.node_id in graph else a.node_id,
+                "impacts": [
+                    {
+                        "node_id": nid,
+                        "label": graph.nodes[nid].get("label", nid) if nid in graph else nid,
+                        "impact": round(imp, 4),
+                        "hops": len(prop.paths.get(nid, [])) - 1 if nid in prop.paths else 0,
+                    }
+                    for nid, imp in top_impacts
+                ],
+            })
+        except Exception:
+            pass
+
+    # 5. LLM narrative
+    narrative = await _generate_brief_narrative(
+        movers, resolved_list, hits, misses, regime, regime_changed, from_state,
+        top_drivers, paths_list, settings,
+    )
+
+    # 6. Broadcast via WebSocket
+    brief_data = {
+        "generated_at": now.isoformat(),
+        "overnight_movers": movers,
+        "resolved_predictions": resolved_list,
+        "prediction_summary": {
+            "total": len(resolved_preds),
+            "hits": hits,
+            "misses": misses,
+            "hit_rate": round(hits / (hits + misses), 3) if (hits + misses) > 0 else None,
+        },
+        "regime": {
+            "state": regime.state.value,
+            "confidence": regime.confidence,
+            "composite_score": regime.composite_score,
+            "changed": regime_changed,
+            "from_state": from_state,
+            "top_drivers": top_drivers,
+        },
+        "top_propagation_paths": paths_list,
+        "narrative": narrative,
+    }
+
+    from app.api.websocket import manager
+    await manager.broadcast({"type": "morning_brief", "data": brief_data})
+
+    return MorningBriefResponse(**brief_data)
+
+
+async def _generate_brief_narrative(
+    movers, resolved, hits, misses, regime, regime_changed, from_state,
+    top_drivers, paths, settings,
+) -> str:
+    """Generate LLM narrative for the morning brief."""
+    # Build context
+    movers_desc = ", ".join(
+        f"{m['label']} ({m['direction']} {m['z_score']:+.1f}σ)" for m in movers[:5]
+    ) or "No significant overnight moves."
+
+    pred_desc = f"{hits} hits, {misses} misses" if (hits + misses) > 0 else "No predictions resolved."
+
+    regime_desc = f"{regime.state.value.replace('_', ' ').upper()} (confidence {regime.confidence:.0%})"
+    if regime_changed:
+        regime_desc += f" — shifted from {from_state}"
+
+    drivers_desc = ", ".join(top_drivers[:3])
+
+    paths_desc = ""
+    for p in paths[:2]:
+        impacts = ", ".join(f"{i['label']} ({i['impact']:+.3f})" for i in p["impacts"][:3])
+        paths_desc += f"  {p['source_label']} → {impacts}\n"
+
+    prompt = (
+        f"You are a macro strategist writing a daily morning brief. Be concise (4-6 sentences).\n\n"
+        f"OVERNIGHT MOVERS: {movers_desc}\n"
+        f"PREDICTIONS: {pred_desc}\n"
+        f"REGIME: {regime_desc}\n"
+        f"KEY DRIVERS: {drivers_desc}\n"
+        f"PROPAGATION PATHS:\n{paths_desc}\n\n"
+        f"Summarize the overnight developments, highlight the most important moves, "
+        f"note any prediction outcomes, describe the current regime, and suggest what to watch today. "
+        f"Write in flowing prose, no bullet points."
+    )
+
+    try:
+        if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
+            import anthropic
+            client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+            response = client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.content[0].text
+        elif settings.openai_api_key:
+            from openai import OpenAI
+            client = OpenAI(api_key=settings.openai_api_key)
+            response = client.chat.completions.create(
+                model=settings.openai_model,
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return response.choices[0].message.content or ""
+        else:
+            return (
+                f"Morning brief: {movers_desc}. "
+                f"Predictions: {pred_desc}. "
+                f"Regime: {regime_desc}. "
+                f"Watch: {drivers_desc}."
+            )
+    except Exception as e:
+        logger.error("Morning brief LLM error: %s", e)
+        return (
+            f"Morning brief: {movers_desc}. "
+            f"Predictions: {pred_desc}. "
+            f"Regime: {regime_desc}."
+        )
+
+
+# ── Automation Toggles ─────────────────────────────────────────
+
+
+class AutomationItem(BaseModel):
+    id: str
+    label: str
+    description: str
+    enabled: bool
+    schedule: str | None = None
+
+
+class AutomationsResponse(BaseModel):
+    automations: list[AutomationItem]
+
+
+class ToggleRequest(BaseModel):
+    automation_id: str
+    enabled: bool
+
+
+@router.get("/automations", response_model=AutomationsResponse)
+async def get_automations():
+    """List all automation toggles with current status."""
+    from app.data_pipeline.scheduler import scheduler
+
+    # Scheduler is "enabled" if it has data-fetching jobs (not counting morning_brief)
+    data_jobs = [j for j in scheduler.get_jobs() if j.id != "morning_brief"]
+    scheduler_enabled = scheduler.running and len(data_jobs) > 0
+
+    return AutomationsResponse(automations=[
+        AutomationItem(
+            id="scheduler",
+            label="Background Scheduler",
+            description="FRED, market, Reddit, news fetching + agent analysis + weight updates",
+            enabled=scheduler_enabled,
+            schedule="Multiple intervals (1h-6h)",
+        ),
+        AutomationItem(
+            id="morning_brief",
+            label="Morning Brief",
+            description="Daily intelligence summary: overnight movers, predictions, regime, narrative",
+            enabled=_is_morning_brief_scheduled(),
+            schedule="Daily 7:00 AM UTC",
+        ),
+    ])
+
+
+@router.post("/automations/toggle", response_model=AutomationsResponse)
+async def toggle_automation(req: ToggleRequest):
+    """Toggle an automation on or off at runtime."""
+    from app.data_pipeline.scheduler import scheduler, setup_scheduler
+
+    if req.automation_id == "scheduler":
+        if req.enabled:
+            # Enable: add data-fetching jobs (not morning_brief — that's separate)
+            data_jobs = [j for j in scheduler.get_jobs() if j.id != "morning_brief"]
+            if not data_jobs:
+                from app.config import settings
+                original = settings.scheduler_enabled
+                settings.scheduler_enabled = True
+                setup_scheduler()
+                settings.scheduler_enabled = original
+                # Remove morning_brief if setup_scheduler added it (it shouldn't, but be safe)
+                # Morning brief is managed independently
+            if not scheduler.running:
+                scheduler.start()
+            logger.info("Scheduler enabled at runtime")
+        else:
+            # Disable: remove data jobs only, preserve morning_brief
+            has_morning_brief = scheduler.get_job("morning_brief") is not None
+            for job in scheduler.get_jobs():
+                if job.id != "morning_brief":
+                    scheduler.remove_job(job.id)
+            logger.info("Scheduler disabled at runtime (morning_brief preserved: %s)", has_morning_brief)
+
+    elif req.automation_id == "morning_brief":
+        if req.enabled:
+            _add_morning_brief_job()
+            logger.info("Morning brief job enabled")
+        else:
+            _remove_morning_brief_job()
+            logger.info("Morning brief job disabled")
+
+    return await get_automations()
+
+
+def _is_morning_brief_scheduled() -> bool:
+    """Check if the morning brief job exists in the scheduler."""
+    from app.data_pipeline.scheduler import scheduler
+    return scheduler.get_job("morning_brief") is not None
+
+
+def _add_morning_brief_job():
+    """Add the morning brief scheduled job."""
+    from apscheduler.triggers.cron import CronTrigger
+    from app.data_pipeline.scheduler import scheduler, scheduled_morning_brief
+
+    if scheduler.get_job("morning_brief"):
+        return  # Already exists
+    scheduler.add_job(
+        scheduled_morning_brief,
+        CronTrigger(hour=7, minute=0),
+        id="morning_brief",
+        replace_existing=True,
+    )
+    if not scheduler.running:
+        scheduler.start()
+
+
+def _remove_morning_brief_job():
+    """Remove the morning brief scheduled job."""
+    from app.data_pipeline.scheduler import scheduler
+    if scheduler.get_job("morning_brief"):
+        scheduler.remove_job("morning_brief")

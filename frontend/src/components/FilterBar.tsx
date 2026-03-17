@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useGraphStore } from "@/hooks/useGraphData";
+import AutomationToggles from "@/components/AutomationToggles";
 
 import { API_URL as API } from "@/lib/config";
 
@@ -254,6 +255,10 @@ export default function FilterBar() {
         >
           {exportLoading ? "Exporting..." : "Export All Data"}
         </button>
+        <div className="mt-3 pt-3 border-t border-gray-700">
+          <div className="text-[10px] text-gray-500 uppercase mb-1.5">Automations</div>
+          <AutomationToggles />
+        </div>
         {lastRun && (
           <div className="mt-2 text-xs text-gray-400">
             Last run: {lastRun.status}

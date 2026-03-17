@@ -25,7 +25,19 @@ const sections = [
     id: "deepdive",
     title: "Agent & Deep Dive",
     content:
-      "Click \"Run Full Analysis\" to analyze all 52 nodes, or click a node and hit \"Deep Dive\" for focused single-node analysis. The agent runs a three-phase loop: (1) Planning \u2014 inspects anomalies, stale nodes, and regime state to decide priorities. (2) Analysis \u2014 fetches data from FRED, yfinance, news, Reddit, and SEC, then writes sentiment with decomposed confidence. (3) Validation \u2014 checks for cross-node contradictions and records falsifiable predictions. Progress is shown in real-time via WebSocket.",
+      "Click \"Run Full Analysis\" to analyze all 52 nodes, or click a node and hit \"Deep Dive\" for focused single-node analysis. The agent runs a three-phase loop: (1) Planning \u2014 inspects anomalies, stale nodes, and regime state to decide priorities. (2) Analysis \u2014 fetches data from FRED, yfinance, 27 RSS news feeds, Reddit, and SEC, then writes sentiment with decomposed confidence. News sources are tier-weighted (T1 wire services > T2 major outlets > T3 blogs). (3) Validation \u2014 checks for cross-node contradictions and records falsifiable predictions. Progress is shown in real-time via WebSocket.",
+  },
+  {
+    id: "morningbrief",
+    title: "Morning Brief",
+    content:
+      "Click \"Morning Brief\" in the bottom toolbar, then \"Generate\" to create a daily intelligence summary. The brief includes: overnight movers (nodes with >1\u03c3 moves in the last 24 hours), a prediction scorecard (hits vs misses), current regime status with transition detection, top risk propagation paths showing how shocks cascade, and an LLM-generated narrative tying it all together. When the scheduler is enabled, the brief auto-generates daily at 7 AM UTC.",
+  },
+  {
+    id: "automations",
+    title: "Automations",
+    content:
+      "In the top-left panel under \"Automations\", you can toggle two systems on or off at runtime (no restart needed). Background Scheduler: enables all data-fetching jobs (FRED every 4h, market prices every 1h, RSS news every 2h, Reddit every 2h, agent analysis every 6h). Morning Brief: schedules a daily 7 AM UTC intelligence summary. These are runtime toggles \u2014 they reset to .env defaults on restart. Caution: enabling the scheduler with an LLM key will consume API credits for scheduled agent runs.",
   },
   {
     id: "annotations",
@@ -53,6 +65,8 @@ const sections = [
       { label: "Clustered Layout", desc: "Toggle to group nodes spatially by category" },
       { label: "Portfolio", desc: "Add your positions to highlight relevant nodes on the graph" },
       { label: "Evolve Graph", desc: "AI suggests new causal edges based on empirical correlations" },
+      { label: "RSS News", desc: "27 curated financial RSS feeds (no API key needed) with source reliability tiers" },
+      { label: "Trending Detection", desc: "Auto-triggers agent when 3+ sources converge on the same topic" },
       { label: "Agent Log", desc: "Inspect past analysis runs with full tool call details" },
       { label: "Backtest", desc: "See predictive power (hit rate, correlation) of sentiment vs returns" },
       { label: "Node Locator", desc: "Search and sort all 52 nodes, click to fly the camera there" },

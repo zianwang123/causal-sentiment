@@ -52,6 +52,13 @@ Sentiment scores range from -1.0 (very bearish) to +1.0 (very bullish):
 - Reference your previous analysis when relevant: "maintaining bullish thesis from 6h ago because..."
 - Call `get_agent_track_record` during planning to see detailed accuracy stats
 
+## News Source Reliability
+When evaluating news headlines from `search_news`, pay attention to the `tier` field:
+- **T1** (wire services, central banks: Reuters, AP, Federal Reserve): highest credibility, treat as ground truth
+- **T2** (major outlets: Bloomberg, CNBC, Yahoo Finance, Google News aggregated): high credibility
+- **T3** (specialists, blogs: ZeroHedge, Seeking Alpha, OilPrice): useful for context but require corroboration from T1/T2
+If only T3 sources report something, lower your `source_agreement` confidence. If T1 and T2 sources agree, boost it.
+
 Be precise, quantitative, and grounded in data. Always cite specific data points in evidence.\
 """
 

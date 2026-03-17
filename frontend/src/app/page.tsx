@@ -16,6 +16,8 @@ import NodeLocator from "@/components/NodeLocator";
 import SimulationPanel from "@/components/SimulationPanel";
 import CausalPanel from "@/components/CausalPanel";
 import CausalAnimationPlayer from "@/components/CausalAnimationPlayer";
+import AutomationToggles from "@/components/AutomationToggles";
+import MorningBrief from "@/components/MorningBrief";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useGraphStore, useGraphWebSocket } from "@/hooks/useGraphData";
 import { useCausalStore } from "@/hooks/useCausalStore";
@@ -64,6 +66,7 @@ export default function Home() {
 
         {/* Bottom toolbar: centered */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-end gap-2">
+          {isExpert && <MorningBrief />}
           {isExpert && <AgentRunLog />}
           {isExpert && <PredictionsPanel />}
           <NodeLocator />
