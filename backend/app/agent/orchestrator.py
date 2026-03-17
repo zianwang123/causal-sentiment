@@ -19,6 +19,7 @@ from app.agent.prompts import (
 )
 from app.agent.schemas import AGENT_TOOLS
 from app.agent.tools import (
+    batch_update_sentiment,
     fetch_fred_data,
     fetch_market_prices,
     fetch_sec_filings,
@@ -38,9 +39,9 @@ logger = logging.getLogger(__name__)
 
 # Phase boundaries (round ranges)
 PLANNING_ROUNDS = 3
-ANALYSIS_ROUNDS = 17
-VALIDATION_ROUNDS = 5
-MAX_ROUNDS = PLANNING_ROUNDS + ANALYSIS_ROUNDS + VALIDATION_ROUNDS  # 25
+ANALYSIS_ROUNDS = 25
+VALIDATION_ROUNDS = 7
+MAX_ROUNDS = PLANNING_ROUNDS + ANALYSIS_ROUNDS + VALIDATION_ROUNDS  # 35
 
 
 def _get_phase(round_num: int) -> str:
@@ -114,6 +115,14 @@ async def run_analysis(
     if memory_context:
         system_prompt += memory_context
 
+    # ── PRE-FETCH DATA PACKAGE ────────────────────────────────────
+    try:
+        data_package_text, source_map = await _build_data_package(node_ids, session, graph)
+        system_prompt += data_package_text
+    except Exception as e:
+        logger.warning("Data package pre-fetch failed (agent will fetch manually): %s", e)
+        source_map = {}
+
     # Check for portfolio positions to give agent context
     from sqlalchemy import select as sa_select
     from app.models.observations import PortfolioPosition
@@ -150,7 +159,7 @@ async def run_analysis(
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                 tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
+                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                 results[tc.id] = result
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
@@ -179,12 +188,14 @@ async def run_analysis(
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                 tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
+                result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                 results[tc.id] = result
 
                 # Track nodes that get sentiment updates
                 if tc.name == "update_sentiment_signal" and "node_id" in tc.input:
                     nodes_updated.append(tc.input["node_id"])
+                elif tc.name == "batch_update_sentiment" and "updates" in tc.input:
+                    nodes_updated.extend(u["node_id"] for u in tc.input["updates"])
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
             _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
@@ -216,7 +227,7 @@ async def run_analysis(
                 for tc in llm_response.tool_calls:
                     logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
                     tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
-                    result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id)
+                    result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                     results[tc.id] = result
 
                 messages = append_tool_results(messages, llm_response.tool_calls, results)
@@ -279,6 +290,7 @@ async def _execute_tool(
     session: AsyncSession,
     graph: nx.DiGraph,
     agent_run_id: int | None = None,
+    source_map: dict | None = None,
 ) -> str:
     """Dispatch a tool call to the appropriate implementation."""
     if tool_name == "fetch_fred_data":
@@ -307,6 +319,8 @@ async def _execute_tool(
             limit=tool_input.get("limit", 10),
         )
     elif tool_name == "update_sentiment_signal":
+        # Attach data source provenance from pre-fetch source_map
+        node_data_sources = source_map.get(tool_input["node_id"]) if source_map else None
         return await update_sentiment_signal(
             node_id=tool_input["node_id"],
             sentiment=tool_input["sentiment"],
@@ -318,6 +332,7 @@ async def _execute_tool(
             data_freshness=tool_input.get("data_freshness"),
             source_agreement=tool_input.get("source_agreement"),
             signal_strength=tool_input.get("signal_strength"),
+            data_sources=node_data_sources,
         )
     elif tool_name == "get_graph_neighborhood":
         return await get_graph_neighborhood(
@@ -353,8 +368,138 @@ async def _execute_tool(
             horizon_hours=tool_input.get("horizon_hours", 168),
             agent_run_id=agent_run_id,
         )
+    elif tool_name == "batch_update_sentiment":
+        # Inject data_sources from source_map into each update
+        if source_map:
+            for u in tool_input.get("updates", []):
+                nid = u.get("node_id")
+                if nid and nid in source_map:
+                    u["_data_sources"] = source_map[nid]
+        return await batch_update_sentiment(
+            updates=tool_input["updates"],
+            session=session,
+            graph=graph,
+        )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+
+async def _build_data_package(node_ids: list[str], session: AsyncSession, graph: nx.DiGraph) -> tuple[str, dict]:
+    """Pre-fetch all available data and build a context string + source map.
+
+    Returns (prompt_text, source_map) where source_map tracks real/mock/missing per node.
+    """
+    from app.data_pipeline.market import MARKET_TICKER_MAP
+
+    source_map: dict[str, dict] = {}  # {node_id: {source_type: {status, ...}}}
+
+    # 1. Fetch all FRED series
+    fred_lines = []
+    for series_id, node_id in FRED_SERIES_MAP.items():
+        try:
+            result = await fetch_fred_data(series_id, 3)
+            data = json.loads(result)
+            is_mock = "mock_data" in data
+            obs = data.get("observations") or data.get("mock_data", [])
+            latest = obs[0] if obs else {}
+            source_map.setdefault(node_id, {})["fred"] = {
+                "status": "mock" if is_mock else "real",
+                "series": series_id,
+                "latest_value": latest.get("value"),
+                "latest_date": latest.get("date"),
+            }
+            status_tag = "[MOCK]" if is_mock else ""
+            fred_lines.append(f"  {series_id} → {node_id}: {latest.get('value', 'N/A')} ({latest.get('date', '?')}) {status_tag}")
+        except Exception as e:
+            logger.warning("Pre-fetch FRED %s failed: %s", series_id, e)
+
+    # 2. Fetch all market tickers
+    market_lines = []
+    try:
+        result = await fetch_market_prices()
+        market_data = json.loads(result)
+        prices = market_data.get("prices", {})
+        for ticker, node_id in MARKET_TICKER_MAP.items():
+            if ticker in prices:
+                p = prices[ticker]
+                source_map.setdefault(node_id, {})["yfinance"] = {
+                    "status": "real",
+                    "ticker": ticker,
+                    "close": p.get("close"),
+                    "change_pct": p.get("change_pct"),
+                }
+                market_lines.append(f"  {ticker} → {node_id}: ${p.get('close', 'N/A')} ({p.get('change_pct', 0):+.2f}%)")
+    except Exception as e:
+        logger.warning("Pre-fetch market failed: %s", e)
+
+    # 3. Fetch RSS headlines
+    news_lines = []
+    try:
+        from app.data_pipeline.news import fetch_all_news_feeds
+        articles = await fetch_all_news_feeds()
+        news_by_node: dict[str, list] = {}
+        for article in articles[:80]:
+            for nid in article.node_ids:
+                news_by_node.setdefault(nid, []).append(article)
+
+        for nid, arts in news_by_node.items():
+            tiers = sorted(set(a.tier for a in arts))
+            source_map.setdefault(nid, {})["rss"] = {
+                "status": "real",
+                "count": len(arts),
+                "top_headlines": [a.title[:80] for a in arts[:3]],
+                "best_tier": min(tiers) if tiers else 3,
+            }
+
+        # Top 20 headlines for the prompt (deduplicated, diverse)
+        seen_titles = set()
+        for article in articles[:50]:
+            if article.title not in seen_titles:
+                seen_titles.add(article.title)
+                tier_label = {1: "T1", 2: "T2", 3: "T3"}.get(article.tier, "T2")
+                nodes_str = ", ".join(article.node_ids[:3])
+                news_lines.append(f"  [{tier_label} {article.source}] {article.title[:90]} → {nodes_str}")
+            if len(news_lines) >= 20:
+                break
+    except Exception as e:
+        logger.warning("Pre-fetch RSS failed: %s", e)
+
+    # 4. Mark nodes with no data sources
+    for nid in node_ids:
+        if nid not in source_map:
+            source_map[nid] = {"_none": {"status": "inferred"}}
+
+    # Build prompt text
+    parts = ["\n\n## Pre-Fetched Data Package\n"]
+    parts.append("All data below was fetched moments ago. Use it directly — no need to re-fetch unless you need more detail.\n")
+    parts.append("Use `batch_update_sentiment` to update multiple nodes efficiently in one call.\n")
+
+    if fred_lines:
+        parts.append(f"\n### FRED Macro Data ({len(fred_lines)} series)\n")
+        parts.extend(fred_lines)
+        parts.append("")
+
+    if market_lines:
+        parts.append(f"\n### Market Prices ({len(market_lines)} tickers)\n")
+        parts.extend(market_lines)
+        parts.append("")
+
+    if news_lines:
+        parts.append(f"\n### Top News Headlines ({len(news_lines)} articles from RSS)\n")
+        parts.extend(news_lines)
+        parts.append("")
+
+    # Flag nodes with no data
+    no_data_nodes = [nid for nid in node_ids if source_map.get(nid, {}).get("_none")]
+    if no_data_nodes:
+        parts.append(f"\n### Nodes Without Direct Data ({len(no_data_nodes)})\n")
+        parts.append(f"  {', '.join(no_data_nodes)}")
+        parts.append("  For these, search news or infer from causal neighbors. Mark evidence as 'inferred'.\n")
+
+    prompt = "\n".join(parts)
+    logger.info("Data package: %d FRED, %d market, %d news, %d no-data nodes",
+                len(fred_lines), len(market_lines), len(news_lines), len(no_data_nodes))
+    return prompt, source_map
 
 
 async def _build_memory_context(session: AsyncSession) -> str:

@@ -22,10 +22,10 @@ regime, and priority ranking. Use this to decide:
 - What hypotheses to test (e.g., "if CPI is hot, rate expectations should rise")
 
 ### Phase 2: Analysis
-- Fetch data (FRED, market prices, news, Reddit, SEC EDGAR)
-- For each node, assess sentiment with evidence from multiple sources
+- IMPORTANT: A pre-fetched data package (FRED, market prices, RSS headlines) is already in your context above. DO NOT re-fetch data that's already provided — it wastes your round budget. Only call `fetch_fred_data`, `fetch_market_prices`, or `search_news` for topics NOT covered in the data package
+- Use `batch_update_sentiment` to update multiple related nodes in a single call (e.g., all rate nodes, all commodity nodes) — much more efficient than individual updates
 - Use `get_graph_neighborhood` to understand a node's causal context before updating
-- Call `update_sentiment_signal` with confidence breakdown:
+- Call `update_sentiment_signal` (or `batch_update_sentiment`) with confidence breakdown:
   - `data_freshness`: 1.0 = very fresh (<1h), 0.5 = moderate (<24h), 0.0 = stale (>7d)
   - `source_agreement`: 1.0 = strong consensus, 0.5 = mixed, 0.0 = contradictory
   - `signal_strength`: 1.0 = very clear signal, 0.5 = moderate, 0.0 = ambiguous/noisy

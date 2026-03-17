@@ -521,13 +521,40 @@ At ±0.2 (boundary): confidence = 40%. At ±0.5: confidence = 100%.
 
 ### Three-Phase Reasoning Loop
 
-The agent runs a structured **Plan → Analyze → Validate** loop with a hard limit of 25 rounds total.
+The agent runs a structured **Plan → Analyze → Validate** loop with a hard limit of 35 rounds total.
 
 | Phase | Rounds | Purpose |
 |-------|--------|---------|
 | **Planning** | 0-2 (3 rounds) | Inspect graph state, decide priorities |
-| **Analysis** | 3-19 (17 rounds) | Fetch data, write sentiment |
-| **Validation** | 20-24 (5 rounds) | Self-critique, check contradictions, record predictions |
+| **Analysis** | 3-27 (25 rounds) | Reason about pre-fetched data, write sentiment |
+| **Validation** | 28-34 (7 rounds) | Self-critique, check contradictions, record predictions |
+
+### Pre-Fetch Data Package
+
+Before the agent starts, the system programmatically fetches all available data and injects it into the agent's context:
+- **All 16 FRED series** — latest values with real/mock status labels
+- **All 13 market tickers** — close prices and daily % changes from yfinance
+- **Top 20 RSS headlines** — from 30 curated feeds with source tier labels (T1/T2/T3)
+- **Coverage gaps** — nodes with no direct data source are flagged so the agent knows to search news or infer
+
+This eliminates ~20 redundant data-fetching rounds. The agent still has access to all fetch tools for deeper investigation.
+
+### Batch Sentiment Update
+
+The `batch_update_sentiment` tool lets the agent update 10-15 nodes in a single call instead of one-by-one. Typical run: 4 batch calls updating all 52 nodes (vs 55 individual calls without batching). Each update carries `data_sources` provenance from the pre-fetch, stored in `Node.evidence[].data_sources`.
+
+### Evidence Provenance
+
+Each node's evidence now includes a `data_sources` dict showing what fed the analysis:
+```json
+{
+  "fred": {"status": "real", "series": "FEDFUNDS", "latest_value": "4.33"},
+  "yfinance": {"status": "real", "ticker": "SPY", "close": 542.3},
+  "rss": {"status": "real", "count": 3, "best_tier": 1},
+  "_none": {"status": "inferred"}
+}
+```
+Status values: `real` (live data), `mock` (API key missing), `inferred` (no direct source). Displayed in the frontend NodePanel as color-coded badges.
 
 ### Phase 1: Planning
 
@@ -541,10 +568,10 @@ The agent also calls `get_agent_track_record` to review its past prediction accu
 
 ### Phase 2: Analysis
 
-The agent fetches data and writes sentiment. For each node it analyzes:
-1. Fetch relevant data (FRED series, market prices, news, Reddit, SEC filings)
-2. Call `get_graph_neighborhood` to understand the node's causal context
-3. Call `update_sentiment_signal` with:
+The agent reasons about the pre-fetched data and writes sentiment. For each node:
+1. Review pre-fetched data (FRED, yfinance, RSS) already in context
+2. Optionally fetch more detail (news, Reddit, SEC) for specific topics
+3. Call `batch_update_sentiment` (or individual `update_sentiment_signal`) with:
    - **sentiment:** [-1.0, +1.0]
    - **confidence breakdown:**
      - `data_freshness`: 1.0 = very fresh (<1h), 0.5 = moderate (<24h), 0.0 = stale (>7d)
@@ -596,7 +623,7 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 
 | Job | Frequency | What It Does |
 |-----|-----------|--------------|
-| FRED fetch | Every 4 hours | Fetches 14 macro series, stores as raw observations |
+| FRED fetch | Every 4 hours | Fetches 16 macro series, stores as raw observations |
 | Market fetch | Every 1 hour | Fetches 13 tickers via yfinance |
 | Reddit fetch | Every 2 hours | Fetches from r/wallstreetbets, r/economics, r/stocks |
 | SEC EDGAR fetch | Daily at 6 AM UTC | Fetches financials for 10 tracked companies |

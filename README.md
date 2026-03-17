@@ -44,7 +44,7 @@ This is exactly how a macro strategist thinks about positioning: "if X happens, 
 - **52-node causal factor graph** — macro, rates, commodities, equities, currencies, and more, connected by 117 directed causal edges with expert-defined + dynamically-adapted weights
 - **3D interactive visualization** — WebGL-powered, sentiment-colored, with directional particles showing causal flow
 - **What-if simulator** — shock any node, watch the cascade, see the full impact report
-- **AI agent** — Claude or GPT fetches real data (FRED, yfinance, news, Reddit, SEC) through a three-phase reasoning loop (Plan → Analyze → Validate) with self-calibration
+- **AI agent** — Claude or GPT with pre-fetched data package (FRED + yfinance + RSS injected before analysis), three-phase reasoning loop (Plan → Analyze → Validate), batch sentiment updates, and self-calibration. All 52 nodes have mapped data sources — no blind spots
 - **RSS news pipeline** — 27 curated financial RSS feeds (no API key needed): Fed, Bloomberg, CNBC, Google News topics. Enhanced keyword matching with word boundaries, exclusions, and confidence scoring. Source reliability tiers (T1 wire → T3 blog) inform agent reasoning
 - **Morning brief** — daily intelligence summary: overnight movers (>1σ), prediction scorecard, regime shifts, risk propagation paths, LLM-generated narrative
 - **Automation toggles** — runtime control of background scheduler and morning brief from the UI (no restart needed)
@@ -105,9 +105,9 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 
 | Source | Data | Frequency |
 |--------|------|----------|
-| **FRED API** | Rates, CPI, GDP, unemployment, credit spreads (14 series) | Every 4h |
+| **FRED API** | Rates, CPI, GDP, unemployment, credit spreads, consumer confidence, wages (16 series) | Every 4h |
 | **yfinance** | Equities, ETFs, futures, forex (13 tickers) | Every 1h |
-| **RSS Feeds** | 27 curated financial feeds (Fed, Bloomberg, CNBC, Google News topics) — free, no API key | Every 2h |
+| **RSS Feeds** | 30 curated financial feeds (Fed, Bloomberg, CNBC, Google News topics) — free, no API key | Every 2h |
 | **NewsAPI** | Headlines and articles (optional fallback) | On agent trigger |
 | **Reddit** | Social sentiment (r/wallstreetbets, r/economics, r/stocks) | Every 2h |
 | **SEC EDGAR** | Earnings, financial filings | Daily |

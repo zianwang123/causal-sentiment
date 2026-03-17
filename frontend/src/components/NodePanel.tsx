@@ -404,6 +404,41 @@ export default function NodePanel() {
         </div>
       ) : null}
 
+      {/* Data Sources Provenance */}
+      {selectedNode.evidence?.[0]?.data_sources && (
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
+            Data Sources
+          </h4>
+          <div className="space-y-1">
+            {Object.entries(selectedNode.evidence[0].data_sources as Record<string, { status: string; series?: string; latest_value?: string; ticker?: string; close?: number; change_pct?: number; count?: number; best_tier?: number }>).map(([source, info]) => {
+              if (source === "_none") return (
+                <div key={source} className="text-[10px] text-yellow-400 bg-yellow-900/20 rounded px-2 py-1">
+                  No direct data source — sentiment inferred from causal neighbors
+                </div>
+              );
+              const statusColor = info.status === "real" ? "text-green-400" : info.status === "mock" ? "text-yellow-400" : "text-gray-500";
+              const statusIcon = info.status === "real" ? "\u2713" : info.status === "mock" ? "\u26a0" : "\u2717";
+              const statusLabel = info.status?.toUpperCase() || "N/A";
+              let detail = "";
+              if (source === "fred" && info.series) detail = `${info.series}: ${info.latest_value ?? "N/A"}`;
+              else if (source === "yfinance" && info.ticker) detail = `${info.ticker}: $${info.close ?? "N/A"} (${(info.change_pct ?? 0) >= 0 ? "+" : ""}${(info.change_pct ?? 0).toFixed(2)}%)`;
+              else if (source === "rss") detail = `${info.count ?? 0} articles, best T${info.best_tier ?? 3}`;
+              return (
+                <div key={source} className="flex items-center justify-between text-[10px] bg-gray-800 rounded px-2 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={statusColor}>{statusIcon}</span>
+                    <span className="text-gray-300 font-medium uppercase">{source}</span>
+                    <span className="text-gray-500">{detail}</span>
+                  </div>
+                  <span className={`text-[9px] ${statusColor}`}>{statusLabel}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {selectedNode.evidence && selectedNode.evidence.length > 0 && (
         <div className="mb-4">
           <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">

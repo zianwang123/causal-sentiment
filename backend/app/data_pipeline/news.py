@@ -132,6 +132,12 @@ GOOGLE_NEWS_FEEDS: list[RSSFeed] = [
             ["us_housing"], tier=2),
     RSSFeed(f"{_GN_BASE}China+economy+PMI", "GN: China",
             ["china_pmi"], tier=2),
+    RSSFeed(f"{_GN_BASE}BOJ+Bank+of+Japan+policy", "GN: BOJ",
+            ["japan_boj_policy"], tier=2),
+    RSSFeed(f"{_GN_BASE}eurozone+inflation+HICP+ECB", "GN: EU HICP",
+            ["eu_hicp"], tier=2),
+    RSSFeed(f"{_GN_BASE}consumer+confidence+sentiment+survey", "GN: Consumer Confidence",
+            ["consumer_confidence"], tier=2),
 ]
 
 ALL_FEEDS: list[RSSFeed] = DEDICATED_FEEDS + GOOGLE_NEWS_FEEDS

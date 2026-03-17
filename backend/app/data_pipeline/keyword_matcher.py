@@ -111,6 +111,58 @@ KEYWORD_RULES: list[KeywordRule] = sorted([
     KeywordRule("housing",      ["us_housing"]),
     KeywordRule("mortgage",     ["us_housing", "us_10y_yield"]),
     KeywordRule("opec",         ["wti_crude", "brent_crude"], weight=1.5),
+
+    # --- Previously empty nodes (filling coverage gaps) ---
+    # us_political_risk
+    KeywordRule("congress",     ["us_political_risk"], weight=1.0, exclude=["indian national congress"]),
+    KeywordRule("legislation",  ["us_political_risk"]),
+    KeywordRule("election",     ["us_political_risk"], weight=0.8),
+    KeywordRule("impeach",      ["us_political_risk"], weight=1.3),
+    KeywordRule("government shutdown", ["us_political_risk"], weight=1.5),
+    # put_call_ratio
+    KeywordRule("put call ratio", ["put_call_ratio"], weight=1.5),
+    KeywordRule("options sentiment", ["put_call_ratio"], weight=1.3),
+    KeywordRule("options volume", ["put_call_ratio"], weight=1.0),
+    # skew_index
+    KeywordRule("skew index",   ["skew_index"], weight=1.5),
+    KeywordRule("tail risk",    ["skew_index"], weight=1.3),
+    # credit_default_swaps
+    KeywordRule("credit default swap", ["credit_default_swaps"], weight=1.5),
+    KeywordRule("cds spread",   ["credit_default_swaps"], weight=1.5),
+    # fund_flows
+    KeywordRule("fund flows",   ["fund_flows"], weight=1.5),
+    KeywordRule("etf flows",    ["fund_flows"], weight=1.3),
+    KeywordRule("outflows",     ["fund_flows"], weight=1.0),
+    KeywordRule("inflows",      ["fund_flows"], weight=1.0),
+    # institutional_positioning
+    KeywordRule("institutional positioning", ["institutional_positioning"], weight=1.5),
+    KeywordRule("hedge fund",   ["institutional_positioning"], weight=1.0),
+    KeywordRule("cot report",   ["institutional_positioning"], weight=1.5),
+    KeywordRule("13f filing",   ["institutional_positioning"], weight=1.3),
+    # global_central_bank_liquidity
+    KeywordRule("global liquidity", ["global_central_bank_liquidity"], weight=1.5),
+    KeywordRule("ecb balance sheet", ["global_central_bank_liquidity"], weight=1.3),
+    KeywordRule("central bank liquidity", ["global_central_bank_liquidity"], weight=1.5),
+    # japan_boj_policy
+    KeywordRule("bank of japan", ["japan_boj_policy"], weight=1.8),
+    KeywordRule("boj",          ["japan_boj_policy"], weight=1.3),
+    KeywordRule("yen intervention", ["japan_boj_policy"], weight=1.5),
+    KeywordRule("yield curve control", ["japan_boj_policy"], weight=1.5),
+    # eu_hicp
+    KeywordRule("eurozone inflation", ["eu_hicp"], weight=1.5),
+    KeywordRule("ecb inflation", ["eu_hicp"], weight=1.3),
+    KeywordRule("hicp",         ["eu_hicp"], weight=1.5),
+    # consumer_confidence
+    KeywordRule("consumer confidence", ["consumer_confidence"], weight=1.5),
+    KeywordRule("consumer sentiment", ["consumer_confidence"], weight=1.5),
+    KeywordRule("michigan sentiment", ["consumer_confidence"], weight=1.8),
+    # wage_growth
+    KeywordRule("wage growth",  ["wage_growth"], weight=1.5),
+    KeywordRule("hourly earnings", ["wage_growth"], weight=1.3),
+    KeywordRule("labor cost",   ["wage_growth"], weight=1.0),
+    # qe_pace
+    KeywordRule("quantitative easing pace", ["qe_pace"], weight=1.5),
+    KeywordRule("asset purchases", ["qe_pace", "fed_balance_sheet"], weight=1.0),
 ], key=lambda r: -len(r.keyword))  # Longest first for priority
 
 

@@ -25,7 +25,7 @@ const sections = [
     id: "deepdive",
     title: "Agent & Deep Dive",
     content:
-      "Click \"Run Full Analysis\" to analyze all 52 nodes, or click a node and hit \"Deep Dive\" for focused single-node analysis. The agent runs a three-phase loop: (1) Planning \u2014 inspects anomalies, stale nodes, and regime state to decide priorities. (2) Analysis \u2014 fetches data from FRED, yfinance, 27 RSS news feeds, Reddit, and SEC, then writes sentiment with decomposed confidence. News sources are tier-weighted (T1 wire services > T2 major outlets > T3 blogs). (3) Validation \u2014 checks for cross-node contradictions and records falsifiable predictions. Progress is shown in real-time via WebSocket.",
+      "Click \"Run Full Analysis\" to analyze all 52 nodes, or click a node and hit \"Deep Dive\" for focused single-node analysis. The agent starts with a pre-fetched data package (all FRED series, market prices, and top RSS headlines already loaded). It runs a three-phase loop: (1) Planning \u2014 inspects anomalies, stale nodes, and regime state. (2) Analysis \u2014 reasons about pre-fetched data, searches for more if needed, and writes sentiment in efficient batches. News sources are tier-weighted (T1 > T2 > T3). (3) Validation \u2014 checks for contradictions and records predictions. Each node shows a \"Data Sources\" panel indicating which data was real, mock, or inferred. Click the background to deselect a node and reset the camera to the default overview.",
   },
   {
     id: "morningbrief",

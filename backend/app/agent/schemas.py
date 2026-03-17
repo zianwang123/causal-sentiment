@@ -224,4 +224,32 @@ AGENT_TOOLS = [
             "required": [],
         },
     },
+    {
+        "name": "batch_update_sentiment",
+        "description": "Update sentiment for multiple nodes at once. More efficient than calling update_sentiment_signal repeatedly. Use this after analyzing a group of related nodes (e.g., all rate nodes, all commodity nodes).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "updates": {
+                    "type": "array",
+                    "description": "Array of sentiment updates to apply",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "node_id": {"type": "string", "description": "Node to update"},
+                            "sentiment": {"type": "number", "description": "Sentiment score [-1.0, +1.0]"},
+                            "confidence": {"type": "number", "description": "Confidence [0.0, 1.0]"},
+                            "evidence": {"type": "string", "description": "Evidence summary"},
+                            "sources": {"type": "array", "items": {"type": "string"}, "description": "Data sources used"},
+                            "data_freshness": {"type": "number", "description": "Data freshness [0.0, 1.0]"},
+                            "source_agreement": {"type": "number", "description": "Source agreement [0.0, 1.0]"},
+                            "signal_strength": {"type": "number", "description": "Signal strength [0.0, 1.0]"},
+                        },
+                        "required": ["node_id", "sentiment", "confidence", "evidence"],
+                    },
+                },
+            },
+            "required": ["updates"],
+        },
+    },
 ]

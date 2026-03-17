@@ -36,6 +36,8 @@ FRED_SERIES_MAP = {
     "BAMLH0A0HYM2": "hy_credit_spread",
     "BAMLC0A0CM": "ig_credit_spread",
     "DCOILWTICO": "wti_crude",
+    "UMCSENT": "consumer_confidence",
+    "CES0500000003": "wage_growth",
 }
 
 
@@ -224,6 +226,7 @@ async def update_sentiment_signal(
     data_freshness: float | None = None,
     source_agreement: float | None = None,
     signal_strength: float | None = None,
+    data_sources: dict | None = None,
 ) -> str:
     """Update a node's sentiment and record the observation."""
     sentiment = clamp_sentiment(sentiment)
@@ -251,6 +254,8 @@ async def update_sentiment_signal(
             "source_agreement": round(source_agreement, 2),
             "signal_strength": round(signal_strength, 2),
         }
+    if data_sources:
+        evidence_entry["data_sources"] = data_sources
     node.evidence = [evidence_entry]
 
     # Record observation
@@ -304,6 +309,42 @@ async def update_sentiment_signal(
         "confidence": confidence,
         "propagated_to": len(prop_result.impacts),
         "impacts": {k: round(v, 4) for k, v in list(prop_result.impacts.items())[:10]},
+    })
+
+
+async def batch_update_sentiment(
+    updates: list[dict],
+    session: AsyncSession,
+    graph: nx.DiGraph,
+) -> str:
+    """Update sentiment for multiple nodes in one call."""
+    results = []
+    for u in updates:
+        try:
+            result_str = await update_sentiment_signal(
+                node_id=u["node_id"],
+                sentiment=u["sentiment"],
+                confidence=u["confidence"],
+                evidence=u["evidence"],
+                session=session,
+                graph=graph,
+                sources=u.get("sources"),
+                data_freshness=u.get("data_freshness"),
+                source_agreement=u.get("source_agreement"),
+                signal_strength=u.get("signal_strength"),
+                data_sources=u.get("_data_sources"),
+            )
+            results.append(json.loads(result_str))
+        except Exception as e:
+            results.append({"node_id": u["node_id"], "error": str(e)})
+
+    succeeded = sum(1 for r in results if r.get("status") == "updated")
+    failed = len(results) - succeeded
+    return json.dumps({
+        "batch_size": len(updates),
+        "succeeded": succeeded,
+        "failed": failed,
+        "results": results,
     })
 
 

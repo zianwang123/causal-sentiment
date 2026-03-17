@@ -11,7 +11,7 @@ export interface GraphNode {
   description: string;
   composite_sentiment: number;
   confidence: number;
-  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown }>;
+  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown; data_sources?: Record<string, Record<string, unknown>> }>;
   centrality: number;
 }
 
@@ -51,7 +51,7 @@ export interface ForceGraphNode {
   confidence: number;
   centrality: number;
   description: string;
-  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown }>;
+  evidence: Array<{ text: string; timestamp: string; sources?: string[]; confidence_breakdown?: ConfidenceBreakdown; data_sources?: Record<string, Record<string, unknown>> }>;
   x?: number;
   y?: number;
   z?: number;

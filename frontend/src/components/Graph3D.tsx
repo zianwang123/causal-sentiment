@@ -38,7 +38,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const fetchAnomalies = useGraphStore((s) => s.fetchAnomalies);
   const clustered = useGraphStore((s) => s.clustered);
   const focusNodeId = useGraphStore((s) => s.focusNodeId);
-  const { handleNodeClick } = useNodeSelection();
+  const { handleNodeClick, clearSelection } = useNodeSelection();
   const graphSource = useCausalStore((s) => s.graphSource);
   const isDiscovered = graphSource === "discovered";
   const isAnimating = useCausalStore((s) => s.isAnimating);
@@ -225,10 +225,19 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
 
   const handleBackgroundClick = useCallback(() => {
     setHighlightedNode(null);
+    clearSelection();
     if (isDiscovered) {
       useCausalStore.getState().clearCausalSimulation();
     }
-  }, [isDiscovered]);
+    // Reset camera to default overview position
+    if (graphRef.current) {
+      graphRef.current.cameraPosition(
+        { x: 0, y: 0, z: 600 },
+        { x: 0, y: 0, z: 0 },
+        1000
+      );
+    }
+  }, [isDiscovered, clearSelection]);
 
   return (
     <div className="w-full h-full bg-gray-950">
