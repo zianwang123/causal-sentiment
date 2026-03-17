@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class NodeValue(Base):
     __tablename__ = "node_values"
     node_id = Column(String(64), nullable=False, primary_key=True)
-    ts = Column(DateTime(timezone=True), nullable=False, primary_key=True)
+    ts = Column(DateTime, nullable=False, primary_key=True)
     value = Column(Float(precision=53), nullable=False)
     source = Column(String(64), nullable=False)
 
@@ -30,9 +30,9 @@ class DiscoveredGraph(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_name = Column(String(128), nullable=False, index=True)  # groups snapshots into a series
     algorithm = Column(String(64), nullable=False)               # 'pcmci', 'varlingam', etc.
-    created_at = Column(DateTime(timezone=True), default=func.now(), index=True)
-    data_start = Column(DateTime(timezone=True), nullable=True)  # earliest data used
-    data_end = Column(DateTime(timezone=True), nullable=True)    # latest data used
+    created_at = Column(DateTime, default=func.now(), index=True)
+    data_start = Column(DateTime, nullable=True)  # earliest data used
+    data_end = Column(DateTime, nullable=True)    # latest data used
     node_count = Column(Integer, default=0)
     edge_count = Column(Integer, default=0)
     parameters = Column(JSONB, default=dict)                     # algorithm params
@@ -48,50 +48,14 @@ class CausalAnchor(Base):
     node_id = Column(String(64), nullable=False)
     scoring = Column(String(32), nullable=False)
     polarity = Column(Integer, nullable=False)  # +1 or -1
-    created_at = Column(DateTime(timezone=True), default=func.now())
+    created_at = Column(DateTime, default=func.now())
     __table_args__ = (UniqueConstraint("node_id", "scoring", name="uq_anchor_node_scoring"),)
-
-
-# Default anchors by scoring method — mirrors _ANCHORS_BY_SCORING in api/routes.py
-_DEFAULT_ANCHORS_BY_SCORING: dict[str, dict[str, int]] = {
-    "zscore": {
-        "sp500": +1,
-        "nasdaq": +1,
-        "russell2000": +1,
-        "us_gdp_growth": +1,
-        "unemployment_rate": -1,
-        "dxy_index": -1,
-        "us_10y_yield": -1,
-        "vix": -1,
-        "wti_crude": -1,
-    },
-    "returns": {
-        "sp500": +1,
-        "nasdaq": +1,
-        "russell2000": +1,
-        "us_gdp_growth": +1,
-        "unemployment_rate": -1,
-        "dxy_index": -1,
-        "us_10y_yield": -1,
-        "vix": -1,
-        "wti_crude": -1,
-    },
-    "volatility": {
-        "sp500": -1,
-        "nasdaq": -1,
-        "russell2000": -1,
-        "vix": -1,
-        "us_10y_yield": -1,
-        "gold": +1,
-        "dxy_index": -1,
-        "hy_credit_spread": -1,
-        "wti_crude": -1,
-    },
-}
 
 
 async def seed_default_anchors(conn: AsyncConnection) -> None:
     """Seed default anchors if the table is empty."""
+    from app.causal_discovery.api.routes import _ANCHORS_BY_SCORING as _DEFAULT_ANCHORS_BY_SCORING
+
     result = await conn.execute(
         select(func.count()).select_from(CausalAnchor.__table__)
     )

@@ -1,9 +1,10 @@
 """API routes for causal discovery — backfill, sources, stats, discover, graph."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 import networkx as nx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -23,6 +24,9 @@ from app.db.connection import get_session
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/causal", tags=["causal-discovery"])
+
+_backfill_lock = asyncio.Lock()
+_discovery_lock = asyncio.Lock()
 
 # ---------------------------------------------------------------------------
 # Module-level backfill status tracker
@@ -53,7 +57,6 @@ async def _run_backfill_task(
     """Background task wrapper that updates ``_backfill_status``."""
     from app.db.connection import async_session
 
-    _backfill_status["state"] = "running"
     _backfill_status["started_at"] = time.time()
     _backfill_status["finished_at"] = None
     _backfill_status["result"] = None
@@ -253,7 +256,6 @@ async def _run_discovery_task(
     from app.db.connection import async_session
     from app.causal_discovery.models import CausalAnchor, DiscoveredGraph
 
-    _discovery_status["state"] = "running"
     _discovery_status["started_at"] = time.time()
     _discovery_status["finished_at"] = None
     _discovery_status["last_result"] = None
@@ -292,7 +294,6 @@ async def _run_discovery_task(
         # Run the selected algorithm in a thread pool to avoid blocking the event loop.
         # All causal discovery algorithms are CPU-bound (numpy matrix ops) and would
         # block async endpoints (health, status, WebSocket) if run in the main thread.
-        import asyncio
 
         if algorithm == "varlingam":
             from app.causal_discovery.engine.causal import discover_edges_varlingam
@@ -403,8 +404,10 @@ async def trigger_backfill(
     Returns immediately with the current status. Poll
     ``GET /api/causal/backfill/status`` for progress.
     """
-    if _backfill_status["state"] == "running":
-        return {"message": "Backfill already running", "status": _backfill_status}
+    async with _backfill_lock:
+        if _backfill_status["state"] == "running":
+            return {"message": "Backfill already running", "status": _backfill_status}
+        _backfill_status["state"] = "running"
 
     background_tasks.add_task(
         _run_backfill_task,
@@ -476,8 +479,14 @@ async def trigger_discovery(
 
     Returns immediately. Poll ``GET /api/causal/discover/status`` for progress.
     """
-    if _discovery_status["state"] == "running":
-        return {"message": "Discovery already running", "status": _discovery_status}
+    _VALID_ALGORITHMS = {"pcmci", "granger", "pc", "ges", "varlingam", "rpcmci"}
+    if algorithm not in _VALID_ALGORITHMS:
+        raise HTTPException(status_code=400, detail=f"Unknown algorithm '{algorithm}'. Valid: {sorted(_VALID_ALGORITHMS)}")
+
+    async with _discovery_lock:
+        if _discovery_status["state"] == "running":
+            return {"message": "Discovery already running", "status": _discovery_status}
+        _discovery_status["state"] = "running"
 
     background_tasks.add_task(
         _run_discovery_task,
@@ -924,7 +933,7 @@ async def get_graph_history(
 class AnchorCreate(BaseModel):
     node_id: str
     scoring: str
-    polarity: int
+    polarity: Literal[-1, 1]
 
 
 @router.get("/anchors")

@@ -129,6 +129,10 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     return () => clearInterval(interval);
   }, [fetchAnomalies]);
 
+  // Ref for nodes so cluster force reads current nodes without re-triggering the effect
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
   // Apply clustering force when mode changes
   useEffect(() => {
     if (!graphRef.current) return;
@@ -138,7 +142,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       // Add a custom force that pulls nodes toward their cluster centroid
       fg.d3Force("cluster", (alpha: number) => {
         const strength = alpha * 0.3;
-        for (const node of nodes) {
+        for (const node of nodesRef.current) {
           const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
           const n = node as any;
           if (n.x !== undefined) {
@@ -153,7 +157,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       fg.d3Force("cluster", null);
     }
     fg.d3ReheatSimulation();
-  }, [clustered, nodes]);
+  }, [clustered]);
 
   // Handle focusNodeId from store (triggered by NodeLocator)
   useEffect(() => {
@@ -177,6 +181,15 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   }, [focusNodeId, nodes]);
 
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
+
+  // Pre-compute centrality rank map (avoids O(n² log n) sort inside per-node-per-frame callback)
+  const centralityRankMap = useMemo(() => {
+    const sorted = [...nodes].sort((a, b) => (a.centrality ?? 0) - (b.centrality ?? 0));
+    const map = new Map<string, number>();
+    const total = sorted.length || 1;
+    sorted.forEach((n, i) => map.set(n.id, i / (total - 1 || 1)));
+    return map;
+  }, [nodes]);
 
   // Force clean remount when graph identity changes (prevents Three.js tick crash
   // when node count changes drastically, e.g. regime switch)
@@ -267,11 +280,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         }}
         nodeVal={(node: any) => {
           if (isDiscovered) {
-            // Exponential sizing: only top few nodes are big, rest are small
-            const sorted = [...nodes].sort((a, b) => (a.centrality ?? 0) - (b.centrality ?? 0));
-            const rank = sorted.findIndex((n) => n.id === node.id);
-            const total = sorted.length || 1;
-            const normalizedRank = rank / (total - 1 || 1);
+            const normalizedRank = centralityRankMap.get(node.id) ?? 0;
             const UNIFORM_SIZE = 5;
             const expSize = 1 + (Math.exp(4 * normalizedRank) - 1) / (Math.exp(4) - 1) * 60;
 

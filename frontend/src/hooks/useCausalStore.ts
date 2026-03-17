@@ -77,6 +77,8 @@ function transformCausalEdge(edge: CausalEdge): ForceGraphLink {
   };
 }
 
+let _loadGraphAbort: AbortController | null = null;
+
 export const useCausalStore = create<CausalStore>((set, get) => ({
   snapshots: [],
   currentGraph: null,
@@ -102,6 +104,9 @@ export const useCausalStore = create<CausalStore>((set, get) => ({
   },
 
   loadGraph: async (id?: number, runName?: string) => {
+    _loadGraphAbort?.abort();
+    _loadGraphAbort = new AbortController();
+    const { signal } = _loadGraphAbort;
     set({ loading: true, error: null });
     try {
       const params = new URLSearchParams();
@@ -110,12 +115,12 @@ export const useCausalStore = create<CausalStore>((set, get) => ({
       const { topN } = get();
       if (topN != null) params.set("top_n", String(topN));
 
-      const res = await fetch(`${API_URL}/api/causal/graph?${params.toString()}`);
+      const res = await fetch(`${API_URL}/api/causal/graph?${params.toString()}`, { signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data: CausalGraphSnapshot = await res.json();
-      set({ currentGraph: data, loading: false, graphSource: "discovered" });
+      if (!signal.aborted) set({ currentGraph: data, loading: false, graphSource: "discovered" });
     } catch (e) {
-      set({ error: (e as Error).message, loading: false });
+      if ((e as Error).name !== "AbortError") set({ error: (e as Error).message, loading: false });
     }
   },
 
