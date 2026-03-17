@@ -597,16 +597,17 @@ Between runs, the agent receives context injected directly into the **system pro
 
 This is not stored in a separate memory system — it's queried from the database at the start of each agent run and concatenated to the system prompt. The agent sees its own history as part of its instructions, enabling self-calibration without external memory infrastructure.
 
-### 11 Tools
+### 12 Tools
 
 | Tool | Purpose | Data Source |
 |------|---------|-------------|
 | `fetch_fred_data` | Macro data (rates, CPI, GDP, etc.) | FRED API |
 | `fetch_market_prices` | ETF/futures prices and % changes | yfinance |
-| `search_news` | Financial headlines | NewsAPI |
+| `search_news` | Financial headlines | RSS (30 curated feeds) |
 | `search_reddit` | Social sentiment | Reddit (asyncpraw) |
 | `fetch_sec_filings` | Earnings, revenue, EPS | SEC EDGAR |
-| `update_sentiment_signal` | Write sentiment to a node | Internal |
+| `update_sentiment_signal` | Write sentiment to a single node | Internal |
+| `batch_update_sentiment` | Write sentiment to multiple nodes (single lock + commit) | Internal |
 | `get_graph_neighborhood` | Inspect node + neighbors | Internal |
 | `get_analysis_context` | Graph-wide state summary | Internal |
 | `validate_consistency` | Check for contradictions | Internal |
@@ -617,13 +618,175 @@ This is not stored in a separate memory system — it's queried from the databas
 
 ## 9. Data Pipeline
 
+### End-to-End Data Flow (Including Agent Decision Loop)
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  EXTERNAL DATA SOURCES                                                          │
+│                                                                                 │
+│  FRED API ──────┐    yfinance ──────┐    RSS Feeds (30) ──┐    Reddit ────┐    │
+│  (16 series)    │    (13 tickers)   │    T1/T2/T3 tiers   │    (3 subs)  │    │
+│  4h interval    │    1h interval    │    2h interval       │    2h interval│    │
+└────────┬────────┘────────┬──────────┘────────┬─────────────┘────────┬─────┘────┘
+         │                 │                   │                      │
+         ▼                 ▼                   ▼                      ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  SCHEDULER PIPELINE (APScheduler, disabled by default)                          │
+│                                                                                 │
+│  Each fetch job:                                                                │
+│  1. Fetch raw data from external source                                         │
+│  2. Store as SentimentObservation (raw_data JSONB)                              │
+│  3. Run anomaly detection (z-score, 2σ threshold)                               │
+│  4. If anomaly detected → auto-trigger agent on affected nodes                  │
+│                                                                                 │
+│  Additional jobs:                                                               │
+│  · Weight recalculation (3 AM) — 90-day Pearson correlations → dynamic_weight   │
+│  · Sentiment decay (2 AM) — 24h half-life exponential decay on all nodes        │
+│  · Prediction resolution (1h) — compare predictions vs actuals, score hit/miss  │
+│  · Trending detection — 3+ sources on same node → auto-trigger agent            │
+│  · Morning brief (7 AM) — overnight movers + prediction scorecard + narrative   │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              │  TRIGGER         │                   │
+              │  · Scheduled (6h)│                   │
+              │  · Anomaly (2σ)  │                   │
+              │  · User button   │                   │
+              ▼                  ▼                   ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  PRE-FETCH DATA PACKAGE  (orchestrator.py → _build_data_package)                │
+│                                                                                 │
+│  Before the agent starts, the system fetches ALL available data:                │
+│                                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐                  │
+│  │ FRED (16)    │  │ yfinance (13)│  │ RSS (30 feeds)       │                  │
+│  │ Latest value │  │ Close price  │  │ Top 20 headlines     │                  │
+│  │ real/mock    │  │ % change     │  │ T1/T2/T3 tier labels │                  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘                  │
+│         │                 │                      │                              │
+│         └─────────────────┼──────────────────────┘                              │
+│                           ▼                                                     │
+│                   source_map: dict[node_id → {fred?, yfinance?, rss?}]          │
+│                   + prompt text injected into agent system prompt                │
+│                   + nodes without data flagged as "inferred"                     │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  AGENT REASONING LOOP  (Claude / GPT, 35 round budget)                          │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────┐            │
+│  │  PHASE 1: PLANNING  (rounds 0-2, max 3)                        │            │
+│  │                                                                 │            │
+│  │  Tools called:                                                  │            │
+│  │  · get_analysis_context → anomalies, stale nodes, regime,       │            │
+│  │                           priority ranking                      │            │
+│  │  · get_agent_track_record → past prediction accuracy            │            │
+│  │                                                                 │            │
+│  │  Agent decides:                                                 │            │
+│  │  · Which nodes to prioritize (anomalies + stale + high-cent.)   │            │
+│  │  · What additional data to fetch                                │            │
+│  │  · Hypotheses to test (cross-asset relationships)               │            │
+│  └─────────────────────────┬───────────────────────────────────────┘            │
+│                            ▼                                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐            │
+│  │  PHASE 2: ANALYSIS  (rounds 3-27, max 25)                      │            │
+│  │                                                                 │            │
+│  │  Step 1: Use pre-fetched data already in context                │            │
+│  │  Step 2: Optionally fetch more (search_news, search_reddit,     │            │
+│  │          fetch_sec_filings) for specific topics                 │            │
+│  │  Step 3: For each node, write sentiment:                        │            │
+│  │                                                                 │            │
+│  │  ┌─ batch_update_sentiment (preferred: ~5 calls for 52 nodes)   │            │
+│  │  │  OR                                                          │            │
+│  │  └─ update_sentiment_signal (individual: 52 calls)              │            │
+│  │                                                                 │            │
+│  │  Each update includes:                                          │            │
+│  │  · sentiment [-1.0, +1.0]                                       │            │
+│  │  · confidence breakdown (freshness, agreement, strength)        │            │
+│  │  · evidence text citing FRED values + RSS headlines + tiers     │            │
+│  │  · sources list (["FRED", "Bloomberg", "Reuters", ...])         │            │
+│  │                                                                 │            │
+│  │  Under the hood, each update:                                   │            │
+│  │  1. Writes to Node table (DB) + in-memory graph                 │            │
+│  │  2. Runs signal propagation (BFS, 4 hops, regime-aware decay)   │            │
+│  │  3. Updates propagated neighbors' sentiment (blended)            │            │
+│  │  4. Appends evidence entry with data_sources provenance         │            │
+│  │  5. Records SentimentObservation (audit trail)                  │            │
+│  └─────────────────────────┬───────────────────────────────────────┘            │
+│                            ▼                                                    │
+│  ┌─────────────────────────────────────────────────────────────────┐            │
+│  │  PHASE 3: VALIDATION  (rounds 28-34, max 7)                    │            │
+│  │                                                                 │            │
+│  │  1. validate_consistency(all updated node_ids)                  │            │
+│  │     · Checks POSITIVE edges: source & target same sign?         │            │
+│  │     · Checks NEGATIVE edges: source & target opposite signs?    │            │
+│  │     · Also checks unchanged neighbors with |sentiment| > 0.15  │            │
+│  │     · Only flags when both |sentiment| > 0.15                   │            │
+│  │                                                                 │            │
+│  │  2. If contradictions found → agent corrects or documents       │            │
+│  │                                                                 │            │
+│  │  3. record_prediction (2-3 high-conviction, falsifiable)        │            │
+│  │     · node_id, direction, predicted_sentiment, horizon (7d)     │            │
+│  │     · Resolved hourly by comparing against actual observations  │            │
+│  └─────────────────────────────────────────────────────────────────┘            │
+│                                                                                 │
+│  All tool calls + outputs stored in AgentRun.tool_calls (JSONB)                 │
+│  Outputs truncated to 2000 chars for DB efficiency                              │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  EVIDENCE & PROVENANCE STORAGE                                                  │
+│                                                                                 │
+│  Node.evidence (JSONB array, latest 20 entries):                                │
+│  ┌──────────────────────────────────────────────────────────────┐               │
+│  │ {                                                            │               │
+│  │   "text": "FEDFUNDS at 4.33, Reuters reports rate cut...",   │               │
+│  │   "timestamp": "2026-03-17T19:10:30Z",                      │               │
+│  │   "sources": ["FRED", "Reuters", "Bloomberg"],               │               │
+│  │   "confidence_breakdown": {                                  │               │
+│  │     "data_freshness": 0.5,                                   │               │
+│  │     "source_agreement": 0.8,                                 │               │
+│  │     "signal_strength": 0.7                                   │               │
+│  │   },                                                         │               │
+│  │   "data_sources": {            ← provenance from pre-fetch   │               │
+│  │     "fred":    {"status":"real","series":"FEDFUNDS"},         │               │
+│  │     "yfinance":{"status":"real","ticker":"SPY","close":542}, │               │
+│  │     "rss":     {"status":"real","count":5,"best_tier":1}     │               │
+│  │   }                                                          │               │
+│  │ }                                                            │               │
+│  └──────────────────────────────────────────────────────────────┘               │
+│                                                                                 │
+│  SentimentObservation table (full audit trail, one row per update):              │
+│  · sentiment, confidence, source, evidence text, raw_data (JSONB)               │
+│  · raw_data includes confidence_breakdown + data_sources provenance             │
+│                                                                                 │
+│  AgentRun.tool_calls (JSONB array, one entry per tool call):                    │
+│  · tool name, input args, output (truncated), round number, phase               │
+│  · Viewable in Agent Run Log panel (expandable per tool call)                   │
+│  · Included in /api/graph/export for offline audit                              │
+└────────────────────────────────┬────────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│  FRONTEND DELIVERY                                                              │
+│                                                                                 │
+│  WebSocket broadcast → 3D graph updates (node colors, edge particles)           │
+│  Node Panel shows: evidence history (20 entries), data sources provenance,      │
+│                     confidence breakdown, causal edges, sentiment chart          │
+│  Agent Run Log shows: tool calls with expandable outputs per phase              │
+│  Export All button: full JSON dump of runs, observations, predictions, nodes    │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
 ### Scheduled Jobs (All Disabled by Default)
 
 Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 
 | Job | Frequency | What It Does |
 |-----|-----------|--------------|
-| FRED fetch | Every 4 hours | Fetches 16 macro series, stores as raw observations |
+| FRED fetch | Every 4 hours | Fetches 16 FRED series, stores as raw observations |
 | Market fetch | Every 1 hour | Fetches 13 tickers via yfinance |
 | Reddit fetch | Every 2 hours | Fetches from r/wallstreetbets, r/economics, r/stocks |
 | SEC EDGAR fetch | Daily at 6 AM UTC | Fetches financials for 10 tracked companies |
@@ -631,7 +794,7 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 | Weight recalculation | Daily at 3 AM UTC | Recomputes dynamic weights from Pearson correlations |
 | Regime check | Every 2 hours | Detects regime, broadcasts via WebSocket |
 | Sentiment decay | Daily at 2 AM UTC | Applies 24h half-life exponential decay |
-| News fetch | Every 2 hours | Fetches 27 RSS feeds, stores articles as observations, detects trending topics |
+| News fetch | Every 2 hours | Fetches 30 RSS feeds, stores articles as observations, detects trending topics |
 | Morning brief | Daily at 7 AM UTC | Generates overnight movers, prediction scorecard, regime status, LLM narrative |
 | Prediction resolution | Every 1 hour | Resolves expired predictions (no LLM cost) |
 
@@ -653,6 +816,8 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 | BAMLH0A0HYM2 | hy_credit_spread | HY Credit Spread |
 | BAMLC0A0CM | ig_credit_spread | IG Credit Spread |
 | DCOILWTICO | wti_crude | WTI Crude Oil |
+| UMCSENT | consumer_confidence | U. of Michigan Consumer Sentiment |
+| CES0500000003 | wage_growth | Average Hourly Earnings |
 
 ### Market Ticker Mapping
 
@@ -674,7 +839,7 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 
 ### RSS News Pipeline
 
-The system fetches news from **27 curated RSS feeds** — no API key required. Feeds are organized into two groups:
+The system fetches news from **30 curated RSS feeds** — no API key required. Feeds are organized into two groups:
 
 **Dedicated financial feeds (10):** Federal Reserve, Bloomberg Markets, CNBC (Top News + Economy), Yahoo Finance, OilPrice.com, Mining.com, Seeking Alpha, ZeroHedge, Investing.com.
 

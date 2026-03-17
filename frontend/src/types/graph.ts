@@ -35,7 +35,7 @@ export interface AgentRun {
   trigger: string;
   status: string;
   nodes_analyzed: string[];
-  tool_calls: Array<{ tool: string; input: Record<string, unknown>; round: number; phase?: string }> | null;
+  tool_calls: Array<{ tool: string; input: Record<string, unknown>; output?: string; round: number; phase?: string }> | null;
   summary: string | null;
   started_at: string;
   finished_at: string | null;

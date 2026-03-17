@@ -215,7 +215,7 @@ async def search_reddit(subreddit: str = "all", query: str = "", limit: int = 10
         return json.dumps({"error": str(e), "query": query})
 
 
-async def update_sentiment_signal(
+async def _update_sentiment_core(
     node_id: str,
     sentiment: float,
     confidence: float,
@@ -227,8 +227,8 @@ async def update_sentiment_signal(
     source_agreement: float | None = None,
     signal_strength: float | None = None,
     data_sources: dict | None = None,
-) -> str:
-    """Update a node's sentiment and record the observation."""
+) -> dict:
+    """Core sentiment update logic (no lock, no commit). Returns result dict."""
     sentiment = clamp_sentiment(sentiment)
 
     # Compute confidence from decomposition if provided, otherwise use raw value
@@ -243,7 +243,7 @@ async def update_sentiment_signal(
     result = await session.execute(select(Node).where(Node.id == node_id))
     node = result.scalar_one_or_none()
     if not node:
-        return json.dumps({"error": f"Node '{node_id}' not found in graph"})
+        return {"error": f"Node '{node_id}' not found in graph"}
 
     node.composite_sentiment = sentiment
     node.confidence = confidence
@@ -256,7 +256,9 @@ async def update_sentiment_signal(
         }
     if data_sources:
         evidence_entry["data_sources"] = data_sources
-    node.evidence = [evidence_entry]
+    existing_evidence = list(node.evidence or [])
+    existing_evidence.insert(0, evidence_entry)
+    node.evidence = existing_evidence[:20]  # Keep latest 20 entries
 
     # Record observation
     raw_data = {}
@@ -266,6 +268,8 @@ async def update_sentiment_signal(
             "source_agreement": round(source_agreement, 2),
             "signal_strength": round(signal_strength, 2),
         }
+    if data_sources:
+        raw_data["data_sources"] = data_sources
     obs = SentimentObservation(
         node_id=node_id,
         sentiment=sentiment,
@@ -276,67 +280,93 @@ async def update_sentiment_signal(
     )
     session.add(obs)
 
-    # Update in-memory graph and run propagation under lock
-    from app.main import app_state
-    async with app_state.graph_lock:
-        if node_id in graph:
-            graph.nodes[node_id]["composite_sentiment"] = sentiment
-            graph.nodes[node_id]["confidence"] = confidence
+    # Update in-memory graph
+    if node_id in graph:
+        graph.nodes[node_id]["composite_sentiment"] = sentiment
+        graph.nodes[node_id]["confidence"] = confidence
 
-        # Run propagation (regime-aware)
-        from app.graph_engine.regimes import detect_regime
-        regime = detect_regime(graph)
-        prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
+    # Run propagation (regime-aware)
+    from app.graph_engine.regimes import detect_regime
+    regime = detect_regime(graph)
+    prop_result = propagate_signal(graph, node_id, sentiment, regime=regime.state.value)
 
-        # Update propagated nodes in DB
-        for target_id, impact in prop_result.impacts.items():
-            target_result = await session.execute(select(Node).where(Node.id == target_id))
-            target_node = target_result.scalar_one_or_none()
-            if target_node:
-                # Blend existing with propagated signal
-                blend = settings.propagation_blend_ratio
-                blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
-                target_node.composite_sentiment = clamp_sentiment(blended)
-                if target_id in graph:
-                    graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
+    # Update propagated nodes in DB
+    for target_id, impact in prop_result.impacts.items():
+        target_result = await session.execute(select(Node).where(Node.id == target_id))
+        target_node = target_result.scalar_one_or_none()
+        if target_node:
+            # Blend existing with propagated signal
+            blend = settings.propagation_blend_ratio
+            blended = (1 - blend) * (target_node.composite_sentiment or 0.0) + blend * impact
+            target_node.composite_sentiment = clamp_sentiment(blended)
+            if target_id in graph:
+                graph.nodes[target_id]["composite_sentiment"] = target_node.composite_sentiment
 
-        await session.commit()
-
-    return json.dumps({
+    return {
         "status": "updated",
         "node_id": node_id,
         "sentiment": sentiment,
         "confidence": confidence,
         "propagated_to": len(prop_result.impacts),
         "impacts": {k: round(v, 4) for k, v in list(prop_result.impacts.items())[:10]},
-    })
+    }
+
+
+async def update_sentiment_signal(
+    node_id: str,
+    sentiment: float,
+    confidence: float,
+    evidence: str,
+    session: AsyncSession,
+    graph: nx.DiGraph,
+    sources: list[str] | None = None,
+    data_freshness: float | None = None,
+    source_agreement: float | None = None,
+    signal_strength: float | None = None,
+    data_sources: dict | None = None,
+) -> str:
+    """Update a node's sentiment and record the observation."""
+    from app.main import app_state
+    async with app_state.graph_lock:
+        result = await _update_sentiment_core(
+            node_id, sentiment, confidence, evidence, session, graph,
+            sources, data_freshness, source_agreement, signal_strength, data_sources,
+        )
+        await session.commit()
+    return json.dumps(result)
 
 
 async def batch_update_sentiment(
     updates: list[dict],
     session: AsyncSession,
     graph: nx.DiGraph,
+    source_map: dict | None = None,
 ) -> str:
-    """Update sentiment for multiple nodes in one call."""
+    """Update sentiment for multiple nodes in one call (single lock + commit)."""
+    from app.main import app_state
     results = []
-    for u in updates:
-        try:
-            result_str = await update_sentiment_signal(
-                node_id=u["node_id"],
-                sentiment=u["sentiment"],
-                confidence=u["confidence"],
-                evidence=u["evidence"],
-                session=session,
-                graph=graph,
-                sources=u.get("sources"),
-                data_freshness=u.get("data_freshness"),
-                source_agreement=u.get("source_agreement"),
-                signal_strength=u.get("signal_strength"),
-                data_sources=u.get("_data_sources"),
-            )
-            results.append(json.loads(result_str))
-        except Exception as e:
-            results.append({"node_id": u["node_id"], "error": str(e)})
+    async with app_state.graph_lock:
+        for u in updates:
+            try:
+                nid = u["node_id"]
+                node_data_sources = source_map.get(nid) if source_map else None
+                result = await _update_sentiment_core(
+                    node_id=nid,
+                    sentiment=u["sentiment"],
+                    confidence=u["confidence"],
+                    evidence=u["evidence"],
+                    session=session,
+                    graph=graph,
+                    sources=u.get("sources"),
+                    data_freshness=u.get("data_freshness"),
+                    source_agreement=u.get("source_agreement"),
+                    signal_strength=u.get("signal_strength"),
+                    data_sources=node_data_sources,
+                )
+                results.append(result)
+            except Exception as e:
+                results.append({"node_id": u.get("node_id"), "error": str(e)})
+        await session.commit()
 
     succeeded = sum(1 for r in results if r.get("status") == "updated")
     failed = len(results) - succeeded
@@ -498,6 +528,7 @@ async def validate_consistency(
 ) -> str:
     """Check for logical contradictions among recently-updated nodes."""
     contradictions = []
+    updated_set = set(node_ids)
 
     for node_id in node_ids:
         if node_id not in graph:
@@ -506,12 +537,12 @@ async def validate_consistency(
         node_sentiment = graph.nodes[node_id].get("composite_sentiment", 0.0) or 0.0
         node_label = graph.nodes[node_id].get("label", node_id)
 
-        # Check outgoing edges
+        # Check outgoing edges — include updated nodes AND direct neighbors with sentiment
         for _, target, edge_data in graph.out_edges(node_id, data=True):
-            if target not in node_ids and target not in [n for n, _ in graph.in_edges(node_id)]:
-                continue  # Only check nodes we've analyzed or direct neighbors
-
             target_sentiment = graph.nodes[target].get("composite_sentiment", 0.0) or 0.0
+            if target not in updated_set and abs(target_sentiment) < 0.15:
+                continue  # Skip unchanged neighbors with negligible sentiment
+
             target_label = graph.nodes[target].get("label", target)
             direction = edge_data.get("direction", "positive")
             if hasattr(direction, "value"):
@@ -527,12 +558,12 @@ async def validate_consistency(
                     "explanation": f"{node_label} ({node_sentiment:+.2f}) has {direction.upper()} edge to {target_label} ({target_sentiment:+.2f}), but they have {expected} signs expected — contradiction detected.",
                 })
 
-        # Check incoming edges too
+        # Check incoming edges — include updated nodes AND unchanged neighbors with sentiment
         for source, _, edge_data in graph.in_edges(node_id, data=True):
-            if source not in node_ids:
-                continue
-
             source_sentiment = graph.nodes[source].get("composite_sentiment", 0.0) or 0.0
+            if source not in updated_set and abs(source_sentiment) < 0.15:
+                continue  # Skip unchanged neighbors with negligible sentiment
+
             source_label = graph.nodes[source].get("label", source)
             direction = edge_data.get("direction", "positive")
             if hasattr(direction, "value"):

@@ -305,6 +305,7 @@ async def scheduled_morning_brief():
     from app.graph_engine.anomalies import detect_anomalies
     from app.graph_engine.regimes import detect_regime, get_regime_history
     from app.graph_engine.propagation import propagate_signal
+    from app.models.observations import Prediction
     from app.config import settings
 
     logger.info("Scheduled morning brief starting")

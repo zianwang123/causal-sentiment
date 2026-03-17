@@ -169,6 +169,7 @@ def _parse_rss_xml(xml_text: str, feed: RSSFeed) -> list[NewsArticle]:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
+        logger.warning("Failed to parse RSS XML from feed '%s'", feed.name)
         return articles
 
     # RSS 2.0: channel/item

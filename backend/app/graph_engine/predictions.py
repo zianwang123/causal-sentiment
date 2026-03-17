@@ -46,7 +46,7 @@ async def resolve_expired_predictions(session: AsyncSession) -> int:
         obs_result = await session.execute(
             select(SentimentObservation)
             .where(SentimentObservation.node_id == pred.node_id)
-            .where(SentimentObservation.source.in_(["agent", "deep_dive", "market_scheduled", "fred_scheduled"]))
+            .where(SentimentObservation.source.in_(["agent", "deep_dive", "market_scheduled", "fred_scheduled", "reddit_scheduled", "news_scheduled"]))
             .where(SentimentObservation.created_at >= pred.created_at)
             .order_by(source_priority, SentimentObservation.created_at.desc())
             .limit(1)

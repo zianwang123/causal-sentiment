@@ -145,28 +145,35 @@ export default function AgentRunLog() {
                           <div className="text-[10px] text-gray-500 uppercase mb-0.5">
                             Tool Calls
                           </div>
-                          <div className="space-y-1 max-h-32 overflow-y-auto">
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
                             {run.tool_calls.map((tc, i) => (
-                              <div
+                              <details
                                 key={i}
                                 className="text-[10px] bg-gray-900 rounded px-2 py-1 font-mono"
                               >
-                                {tc.phase && (
-                                  <span className={`mr-1.5 px-1 py-px rounded text-[9px] font-sans ${
-                                    tc.phase === "planning" ? "bg-purple-900/60 text-purple-300" :
-                                    tc.phase === "validation" ? "bg-amber-900/60 text-amber-300" :
-                                    "bg-blue-900/60 text-blue-300"
-                                  }`}>
-                                    {tc.phase}
+                                <summary className="cursor-pointer select-none">
+                                  {tc.phase && (
+                                    <span className={`mr-1.5 px-1 py-px rounded text-[9px] font-sans ${
+                                      tc.phase === "planning" ? "bg-purple-900/60 text-purple-300" :
+                                      tc.phase === "validation" ? "bg-amber-900/60 text-amber-300" :
+                                      "bg-blue-900/60 text-blue-300"
+                                    }`}>
+                                      {tc.phase}
+                                    </span>
+                                  )}
+                                  <span className="text-blue-400">
+                                    {tc.tool}
                                   </span>
+                                  <span className="text-gray-500">
+                                    ({JSON.stringify(tc.input).slice(0, 80)})
+                                  </span>
+                                </summary>
+                                {tc.output && (
+                                  <pre className="mt-1 text-[9px] text-gray-400 whitespace-pre-wrap break-all max-h-24 overflow-y-auto border-t border-gray-800 pt-1">
+                                    {typeof tc.output === "string" ? tc.output.slice(0, 1000) : JSON.stringify(tc.output, null, 2).slice(0, 1000)}
+                                  </pre>
                                 )}
-                                <span className="text-blue-400">
-                                  {tc.tool}
-                                </span>
-                                <span className="text-gray-500">
-                                  ({JSON.stringify(tc.input).slice(0, 80)})
-                                </span>
-                              </div>
+                              </details>
                             ))}
                           </div>
                         </div>

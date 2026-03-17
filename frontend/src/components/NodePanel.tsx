@@ -444,14 +444,17 @@ export default function NodePanel() {
           <h4 className="text-xs font-semibold text-gray-400 uppercase mb-1">
             Evidence
           </h4>
-          <div className="space-y-1 max-h-32 overflow-y-auto">
+          <div className="space-y-1 max-h-48 overflow-y-auto">
             {selectedNode.evidence.map((e, i) => (
-              <div key={i} className="text-xs text-gray-300 bg-gray-800 rounded p-2">
+              <div key={i} className={`text-xs text-gray-300 bg-gray-800 rounded p-2 ${i === 0 ? "border border-blue-800/50" : ""}`}>
                 {e.text}
                 <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                   <span className="text-[10px] text-gray-500">
                     {parseUTCTimestamp(e.timestamp).toLocaleString()}
                   </span>
+                  {i === 0 && (
+                    <span className="text-[9px] bg-blue-900/50 text-blue-300 rounded px-1 py-px">latest</span>
+                  )}
                   {e.sources?.map((src, j) => (
                     <span key={j} className="text-[9px] bg-blue-900/50 text-blue-300 rounded px-1 py-px">
                       {src}

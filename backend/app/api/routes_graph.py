@@ -909,6 +909,13 @@ class AnnotationUpdate(BaseModel):
     text: str | None = None
     pinned: bool | None = None
 
+    @pydantic_field_validator("text")
+    @classmethod
+    def text_not_too_long(cls, v: str | None) -> str | None:
+        if v is not None and len(v) > 10000:
+            raise ValueError("Annotation text must be 10,000 characters or fewer")
+        return v
+
 
 class AnnotationOut(BaseModel):
     id: int

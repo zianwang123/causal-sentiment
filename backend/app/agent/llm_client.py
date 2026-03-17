@@ -74,7 +74,7 @@ async def _anthropic_round(
 
     response = await client.messages.create(
         model=settings.anthropic_model,
-        max_tokens=4096,
+        max_tokens=8192,
         system=system,
         tools=_anthropic_tools(tools),
         messages=messages,
@@ -95,6 +95,8 @@ async def _anthropic_round(
                 input=block.input,
             ))
 
+    if response.stop_reason == "max_tokens":
+        logger.warning("Anthropic response truncated (hit max_tokens) — tool calls may be incomplete")
     result.done = response.stop_reason == "end_turn"
     return result, messages
 
@@ -127,9 +129,23 @@ async def _openai_round(
     # Convert messages to OpenAI format
     oai_messages = _to_openai_messages(system, messages)
 
+    # Validate messages are JSON-serializable before sending
+    try:
+        import json as _json
+        _json.dumps(oai_messages)
+    except (TypeError, ValueError) as e:
+        logger.error("Messages contain non-serializable data: %s", e)
+        # Find the problematic message
+        for i, msg_item in enumerate(oai_messages):
+            try:
+                _json.dumps(msg_item)
+            except (TypeError, ValueError):
+                logger.error("Problematic message at index %d: %s", i, repr(msg_item)[:500])
+                break
+
     response = await client.chat.completions.create(
         model=settings.openai_model,
-        max_completion_tokens=4096,
+        max_completion_tokens=8192,
         messages=oai_messages,
         tools=_openai_tools(tools),
     )
@@ -156,6 +172,8 @@ async def _openai_round(
                 input=args,
             ))
 
+    if choice.finish_reason == "length":
+        logger.warning("OpenAI response truncated (hit max_completion_tokens) — tool calls may be incomplete")
     result.done = choice.finish_reason == "stop"
     return result, messages
 

@@ -25,6 +25,8 @@ FRED_KEY_SERIES = [
     "BAMLH0A0HYM2",
     "BAMLC0A0CM",
     "DCOILWTICO",
+    "UMCSENT",
+    "CES0500000003",
 ]
 
 

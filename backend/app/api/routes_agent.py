@@ -145,11 +145,14 @@ async def _run_analysis_background(node_ids: list[str], trigger: str, app_state)
 
     try:
         async with async_session() as session:
-            agent_run = await run_analysis(
-                node_ids=node_ids,
-                session=session,
-                graph=app_state.graph,
-                trigger=trigger,
+            agent_run = await asyncio.wait_for(
+                run_analysis(
+                    node_ids=node_ids,
+                    session=session,
+                    graph=app_state.graph,
+                    trigger=trigger,
+                ),
+                timeout=900.0,  # 15-minute timeout
             )
             # Notify WebSocket clients: analysis complete + updated graph
             await manager.broadcast({

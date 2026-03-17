@@ -91,8 +91,17 @@ Do NOT just describe your analysis in text — you must write sentiment to the g
 After fetching data, immediately start calling `update_sentiment_signal` for each node. \
 Do not stop until you have updated all requested nodes.
 
+**USE THE PRE-FETCHED NEWS HEADLINES.** The "Top News Headlines" section in your context contains \
+real-time RSS headlines from T1/T2/T3 sources mapped to specific nodes. You MUST incorporate these \
+headlines into your sentiment assessments — they are primary evidence, not background context. \
+When a headline is relevant to a node you're updating:
+- Cite the headline and its source tier in the `evidence` field
+- Include the source name (e.g., "Bloomberg", "Reuters") in the `sources` list
+- Adjust `source_agreement` based on whether headlines agree with FRED/market data
+- Headlines from T1 sources that contradict your regime-based assessment should cause you to revise
+
 For each `update_sentiment_signal` call, provide:
-- Sentiment score with evidence citing specific data points
+- Sentiment score with evidence citing specific data points (FRED values, market prices, AND headlines)
 - Confidence breakdown (data_freshness, source_agreement, signal_strength)
 - Sources list
 

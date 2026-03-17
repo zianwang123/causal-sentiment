@@ -29,13 +29,16 @@ class ConnectionManager:
     async def broadcast(self, data: dict):
         disconnected = []
         message = json.dumps(data, default=str)
-        for conn in self.active_connections:
+        for conn in list(self.active_connections):
             try:
                 await conn.send_text(message)
             except Exception:
                 disconnected.append(conn)
         for conn in disconnected:
-            self.active_connections.remove(conn)
+            try:
+                self.active_connections.remove(conn)
+            except ValueError:
+                pass  # Already removed by disconnect()
 
 
 manager = ConnectionManager()

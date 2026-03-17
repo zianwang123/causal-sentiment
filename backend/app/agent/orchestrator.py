@@ -19,6 +19,7 @@ from app.agent.prompts import (
 )
 from app.agent.schemas import AGENT_TOOLS
 from app.agent.tools import (
+    FRED_SERIES_MAP,
     batch_update_sentiment,
     fetch_fred_data,
     fetch_market_prices,
@@ -119,6 +120,7 @@ async def run_analysis(
     try:
         data_package_text, source_map = await _build_data_package(node_ids, session, graph)
         system_prompt += data_package_text
+        logger.info("Pre-fetch succeeded: source_map has %d node entries", len(source_map))
     except Exception as e:
         logger.warning("Data package pre-fetch failed (agent will fetch manually): %s", e)
         source_map = {}
@@ -158,9 +160,9 @@ async def run_analysis(
             results: dict[str, str] = {}
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
-                tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
                 result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                 results[tc.id] = result
+                tool_calls_log.append({"tool": tc.name, "input": tc.input, "output": result[:2000] if isinstance(result, str) else str(result)[:2000], "round": round_num, "phase": phase})
 
             messages = append_tool_results(messages, llm_response.tool_calls, results)
             _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
@@ -187,9 +189,9 @@ async def run_analysis(
             results = {}
             for tc in llm_response.tool_calls:
                 logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
-                tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
                 result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                 results[tc.id] = result
+                tool_calls_log.append({"tool": tc.name, "input": tc.input, "output": result[:2000] if isinstance(result, str) else str(result)[:2000], "round": round_num, "phase": phase})
 
                 # Track nodes that get sentiment updates
                 if tc.name == "update_sentiment_signal" and "node_id" in tc.input:
@@ -226,9 +228,9 @@ async def run_analysis(
                 results = {}
                 for tc in llm_response.tool_calls:
                     logger.info("[%s round %d] %s(%s)", phase, round_num, tc.name, json.dumps(tc.input)[:200])
-                    tool_calls_log.append({"tool": tc.name, "input": tc.input, "round": round_num, "phase": phase})
                     result = await _execute_tool(tc.name, tc.input, session, graph, agent_run_id=agent_run.id, source_map=source_map)
                     results[tc.id] = result
+                    tool_calls_log.append({"tool": tc.name, "input": tc.input, "output": result[:2000] if isinstance(result, str) else str(result)[:2000], "round": round_num, "phase": phase})
 
                 messages = append_tool_results(messages, llm_response.tool_calls, results)
                 _broadcast_progress(round_num, phase, llm_response.tool_calls, tool_calls_log)
@@ -293,6 +295,10 @@ async def _execute_tool(
     source_map: dict | None = None,
 ) -> str:
     """Dispatch a tool call to the appropriate implementation."""
+    if tool_name in ("update_sentiment_signal", "batch_update_sentiment"):
+        logger.info("_execute_tool %s: source_map=%s entries, node=%s",
+                    tool_name, len(source_map) if source_map else "None",
+                    tool_input.get("node_id", "batch"))
     if tool_name == "fetch_fred_data":
         return await fetch_fred_data(
             series_id=tool_input["series_id"],
@@ -369,16 +375,11 @@ async def _execute_tool(
             agent_run_id=agent_run_id,
         )
     elif tool_name == "batch_update_sentiment":
-        # Inject data_sources from source_map into each update
-        if source_map:
-            for u in tool_input.get("updates", []):
-                nid = u.get("node_id")
-                if nid and nid in source_map:
-                    u["_data_sources"] = source_map[nid]
         return await batch_update_sentiment(
             updates=tool_input["updates"],
             session=session,
             graph=graph,
+            source_map=source_map,
         )
     else:
         return json.dumps({"error": f"Unknown tool: {tool_name}"})
