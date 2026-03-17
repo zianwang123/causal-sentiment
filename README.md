@@ -110,7 +110,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 | Source | Data | Frequency |
 |--------|------|----------|
 | **FRED API** | Rates, CPI, GDP, unemployment, credit spreads, consumer confidence, wages (16 series) | Every 4h |
-| **yfinance** | Equities, ETFs, futures, forex (13 tickers) | Every 1h |
+| **yfinance** | Equities, ETFs, commodities, forex, volatility indices, bond ETFs (21 tickers) | Every 1h |
 | **RSS Feeds** | 30 curated financial feeds (Fed, Bloomberg, CNBC, Google News topics) — free, no API key | Every 2h |
 | **NewsAPI** | Headlines and articles (optional fallback) | On agent trigger |
 | **Reddit** | Social sentiment (r/wallstreetbets, r/economics, r/stocks) | Every 2h |
@@ -274,7 +274,7 @@ For detailed file descriptions, see **[Technical Manual](docs/TECHNICAL_MANUAL.m
 A: This is experimental. The agent's quality depends on the LLM, data freshness, and graph structure. The built-in prediction tracking measures accuracy over time. Treat it as a research tool, not a trading signal.
 
 **Q: Does this cost money to run?**
-A: LLM API calls cost money. A full 52-node analysis typically uses 30-60K tokens. Market data (yfinance) is free. FRED requires a free API key. Background jobs are **disabled by default** to prevent unexpected costs.
+A: LLM API calls cost money. A full 52-node analysis typically uses ~15 tool calls and 20-40K tokens. Market data (yfinance, 21 tickers) is free. FRED requires a free API key (mock data fallback without it). Background jobs are **disabled by default** to prevent unexpected costs.
 
 **Q: Can I add my own nodes and edges?**
 A: Edit `backend/app/graph_engine/topology.py`. The topology learning feature can also suggest new edges from correlation patterns.
@@ -310,6 +310,10 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [x] Evidence provenance — real/mock/inferred per data source per node, evidence history (20 entries)
 - [x] Tool audit trail — full tool call inputs + outputs stored per agent run
 - [x] Batch sentiment updates — atomic multi-node writes with single graph lock
+- [x] Expanded data coverage — 21 yfinance tickers (forex, volatility indices, bond ETFs), 5-day trend context
+- [x] Risk-aware color scheme — red = market-threatening, green = market-friendly (inverted for risk nodes)
+- [x] Agent optimization — ~15 tool calls per run (batch-first, no re-fetching pre-fetched data)
+- [x] 16 bug fixes — LLM error handling/retry/timeout, graph rollback, batch propagation cascade fix, concurrent scheduler guard
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)

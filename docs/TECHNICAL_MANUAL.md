@@ -55,7 +55,7 @@ Browser (localhost:3000)
        │ WebSocket (real-time push)
        ▼
 FastAPI Backend (localhost:8000)
-  ├── AI Agent (Claude/GPT, 3-phase loop, 11 tools)
+  ├── AI Agent (Claude/GPT, 3-phase loop, 12 tools)
   ├── Graph Engine (NetworkX, propagation, anomalies, regimes)
   ├── Data Pipeline (APScheduler, FRED, yfinance, Reddit, SEC)
   └── PostgreSQL + TimescaleDB + Redis
@@ -625,7 +625,7 @@ This is not stored in a separate memory system — it's queried from the databas
 │  EXTERNAL DATA SOURCES                                                          │
 │                                                                                 │
 │  FRED API ──────┐    yfinance ──────┐    RSS Feeds (30) ──┐    Reddit ────┐    │
-│  (16 series)    │    (13 tickers)   │    T1/T2/T3 tiers   │    (3 subs)  │    │
+│  (16 series)    │    (21 tickers)   │    T1/T2/T3 tiers   │    (3 subs)  │    │
 │  4h interval    │    1h interval    │    2h interval       │    2h interval│    │
 └────────┬────────┘────────┬──────────┘────────┬─────────────┘────────┬─────┘────┘
          │                 │                   │                      │
@@ -787,7 +787,7 @@ Set `SCHEDULER_ENABLED=true` in `.env` to enable.
 | Job | Frequency | What It Does |
 |-----|-----------|--------------|
 | FRED fetch | Every 4 hours | Fetches 16 FRED series, stores as raw observations |
-| Market fetch | Every 1 hour | Fetches 13 tickers via yfinance |
+| Market fetch | Every 1 hour | Fetches 21 tickers via yfinance (equities, commodities, forex, vol indices, bond ETFs) |
 | Reddit fetch | Every 2 hours | Fetches from r/wallstreetbets, r/economics, r/stocks |
 | SEC EDGAR fetch | Daily at 6 AM UTC | Fetches financials for 10 tracked companies |
 | Agent analysis | Every 6 hours | Runs agent on nodes with fresh data since last run |
