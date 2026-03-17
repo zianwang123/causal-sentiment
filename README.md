@@ -6,7 +6,7 @@ Financial markets are deeply interconnected. A Fed rate decision ripples through
 
 Causal Sentiment Engine is a **3D interactive causal graph** with 52 macro nodes and 117 directed edges, powered by an AI agent that fetches real-time data, analyzes sentiment, and propagates impact through the network. Simulate "what if" shocks — drag oil sentiment to -0.8 and watch the cascade through energy, inflation, rates, and equities. Pin your own reasoning to nodes. The tool remembers what you think, not just what the data says.
 
-This entire full-stack application — Python backend, Next.js frontend, 3D WebGL visualization, PostgreSQL with TimescaleDB, WebSocket real-time sync, a multi-phase AI agent with 11 tools — was built with the help of [Claude Code](https://claude.ai/claude-code). The velocity of what's possible with AI-assisted development is staggering.
+This entire full-stack application — Python backend, Next.js frontend, 3D WebGL visualization, PostgreSQL with TimescaleDB, WebSocket real-time sync, a multi-phase AI agent with 12 tools — was built with the help of [Claude Code](https://claude.ai/claude-code). The velocity of what's possible with AI-assisted development is staggering.
 
 Is it perfect? Not even close. The agent's reasoning could be sharper. The clustering and sentiment propagation models are simplistic. There's a whole world of scenario analysis and market stress testing that could be layered on. This is a prototype — a proof of concept showing how AI + good visualization can expand how we think about macro causation.
 
@@ -296,7 +296,12 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [x] Portfolio overlay + backtesting
 - [x] LLM topology suggestions
 - [x] CI/CD pipeline
-- [ ] Morning brief — daily summary of moves, predictions, regime changes
+- [x] Morning brief — daily summary of moves, predictions, regime changes
+- [x] RSS news pipeline — 30 curated feeds (no API key), source reliability tiers (T1/T2/T3)
+- [x] Pre-fetch data package — FRED + yfinance + RSS injected before agent starts
+- [x] Evidence provenance — real/mock/inferred per data source per node, evidence history (20 entries)
+- [x] Tool audit trail — full tool call inputs + outputs stored per agent run
+- [x] Batch sentiment updates — atomic multi-node writes with single graph lock
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)
