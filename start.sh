@@ -4,7 +4,11 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Check for port conflicts before starting
+# Clean up any existing project containers first
+echo "Cleaning up previous containers..."
+docker-compose down 2>/dev/null || true
+
+# Check for port conflicts from external processes
 check_port() {
   local port=$1 service=$2
   if ss -tlnp 2>/dev/null | grep -q ":${port} " || lsof -i :"${port}" -sTCP:LISTEN >/dev/null 2>&1; then

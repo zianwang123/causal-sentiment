@@ -36,6 +36,7 @@ export default function FilterBar() {
   const [narrativeLoading, setNarrativeLoading] = useState(false);
   const [weightsLoading, setWeightsLoading] = useState(false);
   const [weightsResult, setWeightsResult] = useState<string | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const fetchLLMConfig = useCallback(() => {
     fetch(`${API}/api/agent/llm-config`)
@@ -232,6 +233,27 @@ export default function FilterBar() {
             </div>
           </div>
         )}
+        <button
+          onClick={() => {
+            setExportLoading(true);
+            fetch(`${API}/api/graph/export`)
+              .then((r) => r.blob())
+              .then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `causal-sentiment-export-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-")}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              })
+              .catch((e) => console.error("Export failed:", e))
+              .finally(() => setExportLoading(false));
+          }}
+          disabled={exportLoading}
+          className="w-full mt-2 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-gray-300 text-sm py-2 px-3 rounded transition-colors"
+        >
+          {exportLoading ? "Exporting..." : "Export All Data"}
+        </button>
         {lastRun && (
           <div className="mt-2 text-xs text-gray-400">
             Last run: {lastRun.status}

@@ -391,7 +391,8 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
             }
             return normalWidth;
           }
-          return Math.max(0.5, (link.weight ?? 0.5) * 3);
+          const w = link.weight ?? 0.5;
+          return 0.4 + w * w * 5;
         }}
         linkDirectionalParticles={(link: any) => {
           if (simAffectedEdges) {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 from sqlalchemy import select
@@ -22,7 +22,7 @@ async def _get_node_timeseries(
     lookback_days: int,
 ) -> list[tuple[datetime, float]]:
     """Fetch sentiment observations as a time series for a node."""
-    cutoff = datetime.now(UTC) - timedelta(days=lookback_days)
+    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
     result = await session.execute(
         select(SentimentObservation.created_at, SentimentObservation.sentiment)
         .where(SentimentObservation.node_id == node_id)

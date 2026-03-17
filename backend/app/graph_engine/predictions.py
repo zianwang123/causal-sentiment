@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import case, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +21,7 @@ async def resolve_expired_predictions(session: AsyncSession) -> int:
 
     Returns count of newly resolved predictions.
     """
-    now = datetime.now(UTC)
+    now = datetime.utcnow()
 
     # Find unresolved predictions whose horizon has passed
     result = await session.execute(

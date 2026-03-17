@@ -113,7 +113,7 @@ async def fetch_gdelt_tone(days: int = 365) -> list[dict]:
         Row dicts with keys ``node_id``, ``ts``, ``value``, ``source``.
     """
     base_url = "https://api.gdeltproject.org/api/v2/doc/doc"
-    start_date = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    start_date = datetime.utcnow() - timedelta(days=days)
     start_str = start_date.strftime("%Y%m%d%H%M%S")
 
     queries = [

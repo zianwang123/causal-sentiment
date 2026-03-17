@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -305,7 +305,7 @@ async def scheduled_sentiment_decay():
         async with async_session() as session:
             result = await session.execute(select(Node))
             nodes = result.scalars().all()
-            now = datetime.now(UTC)
+            now = datetime.utcnow()
             updated = 0
             for node in nodes:
                 if not node.composite_sentiment or abs(node.composite_sentiment) < 0.01:

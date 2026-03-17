@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator as pydantic_field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from fastapi.responses import JSONResponse
 from app.db.connection import get_session
 from app.graph_engine.weights import compute_centralities
 from app.models.graph import Edge, Node
-from app.models.observations import SentimentObservation
+from app.models.observations import (
+    AgentRun, Annotation, Prediction, RegimeSnapshot, SentimentObservation,
+)
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 
@@ -343,7 +346,7 @@ async def get_sentiment_history(
     session: AsyncSession = Depends(get_session),
 ):
     """Return sentiment observation history for a node."""
-    cutoff = datetime.now(UTC) - timedelta(days=days)
+    cutoff = datetime.utcnow() - timedelta(days=days)
     result = await session.execute(
         select(SentimentObservation)
         .where(SentimentObservation.node_id == node_id)
@@ -513,7 +516,7 @@ async def accept_suggestion(
     session.add(new_edge)
 
     suggestion.status = "accepted"
-    suggestion.reviewed_at = datetime.now(UTC)
+    suggestion.reviewed_at = datetime.utcnow()
 
     await session.commit()
 
@@ -551,7 +554,7 @@ async def reject_suggestion(
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
     suggestion.status = "rejected"
-    suggestion.reviewed_at = datetime.now(UTC)
+    suggestion.reviewed_at = datetime.utcnow()
     await session.commit()
 
     return {"status": "rejected"}
@@ -757,6 +760,133 @@ async def simulate_shock(req: SimulateRequest):
     )
 
 
+# ── DATA EXPORT ──────────────────────────────────────────────────────
+
+
+@router.get("/export")
+async def export_all_data(session: AsyncSession = Depends(get_session)):
+    """Export all application data as a single JSON download."""
+
+    def _serialize_dt(dt: datetime | None) -> str | None:
+        return dt.isoformat() if dt else None
+
+    # Agent runs
+    runs_result = await session.execute(
+        select(AgentRun).order_by(AgentRun.started_at.desc())
+    )
+    agent_runs = [
+        {
+            "id": r.id, "trigger": r.trigger, "status": r.status,
+            "nodes_analyzed": r.nodes_analyzed or [], "tool_calls": r.tool_calls or [],
+            "summary": r.summary, "error": r.error,
+            "started_at": _serialize_dt(r.started_at),
+            "finished_at": _serialize_dt(r.finished_at),
+        }
+        for r in runs_result.scalars().all()
+    ]
+
+    # Predictions
+    preds_result = await session.execute(
+        select(Prediction).order_by(Prediction.created_at.desc())
+    )
+    predictions = [
+        {
+            "id": p.id, "node_id": p.node_id,
+            "predicted_direction": p.predicted_direction,
+            "predicted_sentiment": p.predicted_sentiment,
+            "horizon_hours": p.horizon_hours, "reasoning": p.reasoning,
+            "created_at": _serialize_dt(p.created_at),
+            "resolved_at": _serialize_dt(p.resolved_at),
+            "actual_sentiment": p.actual_sentiment,
+            "hit": p.hit, "magnitude_score": p.magnitude_score,
+        }
+        for p in preds_result.scalars().all()
+    ]
+
+    # Sentiment observations
+    obs_result = await session.execute(
+        select(SentimentObservation).order_by(SentimentObservation.created_at.desc())
+    )
+    observations = [
+        {
+            "id": o.id, "node_id": o.node_id, "sentiment": o.sentiment,
+            "confidence": o.confidence, "source": o.source,
+            "evidence": o.evidence, "raw_data": o.raw_data,
+            "created_at": _serialize_dt(o.created_at),
+        }
+        for o in obs_result.scalars().all()
+    ]
+
+    # Annotations
+    ann_result = await session.execute(
+        select(Annotation).order_by(Annotation.created_at.desc())
+    )
+    annotations = [
+        {
+            "id": a.id, "node_id": a.node_id, "text": a.text,
+            "pinned": a.pinned,
+            "created_at": _serialize_dt(a.created_at),
+            "updated_at": _serialize_dt(a.updated_at),
+        }
+        for a in ann_result.scalars().all()
+    ]
+
+    # Regime snapshots
+    regime_result = await session.execute(
+        select(RegimeSnapshot).order_by(RegimeSnapshot.detected_at.desc())
+    )
+    regimes = [
+        {
+            "id": r.id, "state": r.state, "confidence": r.confidence,
+            "composite_score": r.composite_score,
+            "contributing_signals": r.contributing_signals,
+            "detected_at": _serialize_dt(r.detected_at),
+        }
+        for r in regime_result.scalars().all()
+    ]
+
+    # Graph state
+    nodes_result = await session.execute(select(Node))
+    nodes = [
+        {
+            "id": n.id, "label": n.label, "node_type": n.node_type.value,
+            "description": n.description or "",
+            "composite_sentiment": n.composite_sentiment or 0.0,
+            "confidence": n.confidence or 0.0,
+            "evidence": n.evidence or [],
+        }
+        for n in nodes_result.scalars().all()
+    ]
+
+    edges_result = await session.execute(select(Edge))
+    edges = [
+        {
+            "id": e.id, "source_id": e.source_id, "target_id": e.target_id,
+            "direction": e.direction.value,
+            "base_weight": e.base_weight, "dynamic_weight": e.dynamic_weight,
+            "description": e.description or "",
+        }
+        for e in edges_result.scalars().all()
+    ]
+
+    export = {
+        "exported_at": datetime.utcnow().isoformat(),
+        "agent_runs": agent_runs,
+        "predictions": predictions,
+        "sentiment_observations": observations,
+        "annotations": annotations,
+        "regime_snapshots": regimes,
+        "graph": {"nodes": nodes, "edges": edges},
+    }
+
+    return JSONResponse(
+        content=export,
+        headers={
+            "Content-Disposition": f'attachment; filename="causal-sentiment-export-{datetime.utcnow().strftime("%Y%m%d-%H%M%S")}.json"',
+        },
+    )
+
+
 # ── ANALYST ANNOTATIONS ──────────────────────────────────────────────
 
 annotations_router = APIRouter(prefix="/api/annotations", tags=["annotations"])
@@ -844,7 +974,7 @@ async def update_annotation(
         annotation.text = body.text
     if body.pinned is not None:
         annotation.pinned = body.pinned
-    annotation.updated_at = datetime.now(UTC)
+    annotation.updated_at = datetime.utcnow()
 
     await session.commit()
     await session.refresh(annotation)

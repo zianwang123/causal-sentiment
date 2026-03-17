@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
 
 import httpx
 import networkx as nx
@@ -143,13 +143,13 @@ def _mock_news(query: str) -> list[dict]:
         {
             "title": f"Markets react to latest {query} developments",
             "source": "Mock Financial Times",
-            "published_at": datetime.now(UTC).isoformat(),
+            "published_at": datetime.utcnow().isoformat(),
             "description": f"Analysts are closely watching {query} for signals about the economic outlook.",
         },
         {
             "title": f"What {query} means for investors in 2026",
             "source": "Mock Reuters",
-            "published_at": datetime.now(UTC).isoformat(),
+            "published_at": datetime.utcnow().isoformat(),
             "description": f"A deep dive into how {query} is shaping market expectations.",
         },
     ]
@@ -218,7 +218,7 @@ async def update_sentiment_signal(
 
     node.composite_sentiment = sentiment
     node.confidence = confidence
-    evidence_entry = {"text": evidence, "timestamp": datetime.now(UTC).isoformat(), "sources": sources or []}
+    evidence_entry = {"text": evidence, "timestamp": datetime.utcnow().isoformat(), "sources": sources or []}
     if data_freshness is not None:
         evidence_entry["confidence_breakdown"] = {
             "data_freshness": round(data_freshness, 2),
@@ -347,8 +347,8 @@ async def get_analysis_context(session: AsyncSession, graph: nx.DiGraph) -> str:
 
     # Data freshness: last observation time per node
     from datetime import timedelta
-    cutoff_24h = datetime.now(UTC) - timedelta(hours=24)
-    cutoff_6h = datetime.now(UTC) - timedelta(hours=6)
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_6h = datetime.utcnow() - timedelta(hours=6)
 
     from sqlalchemy import func as sa_func
     subq = (
