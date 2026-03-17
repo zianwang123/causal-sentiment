@@ -4,6 +4,25 @@ set -e
 
 cd "$(dirname "$0")"
 
+# Check for port conflicts before starting
+check_port() {
+  local port=$1 service=$2
+  if ss -tlnp 2>/dev/null | grep -q ":${port} " || lsof -i :"${port}" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "ERROR: Port ${port} is already in use (needed by ${service})."
+    echo "  Find what's using it:  ss -tlnp | grep :${port}"
+    echo "  Or:                    sudo lsof -i :${port}"
+    echo "  Then stop that process and re-run ./start.sh"
+    exit 1
+  fi
+}
+
+echo "Checking for port conflicts..."
+check_port 5432 "PostgreSQL"
+check_port 6379 "Redis"
+check_port 8000 "Backend (uvicorn)"
+check_port 3000 "Frontend (Next.js)"
+echo "  All ports available"
+
 echo "Starting DB + Redis..."
 docker-compose up db redis -d
 
