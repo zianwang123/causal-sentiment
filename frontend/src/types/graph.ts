@@ -129,3 +129,59 @@ export const NODE_TYPE_SHAPES: Record<string, NodeTypeShape> = {
   flows_sentiment: "sphere",
   global: "sphere",
 };
+
+// Causal Discovery types
+export interface CausalNode {
+  id: string;
+  zscore: number;
+  polarity: number;
+  display_sentiment: number;
+  importance: number;
+}
+
+export interface EdgeValidation {
+  arrow_strength: number;
+  refutation_passed: boolean;
+  ci_test_p_value: number;
+}
+
+export interface CausalEdge {
+  source: string;
+  target: string;
+  weight: number;
+  lag: number;
+  direction: "positive" | "negative";
+  validation?: EdgeValidation | null;
+}
+
+export interface CausalGraphSnapshot {
+  id: number;
+  run_name: string;
+  algorithm: string;
+  created_at: string;
+  parameters: {
+    scoring: string;
+    max_lag: number;
+    significance_level: number;
+    days: number;
+    zscore_window: number;
+    stats?: { density: number; avg_degree: number; clustering: number };
+    [key: string]: unknown;  // allow additional params like regime_index
+  };
+  nodes: CausalNode[];
+  edges: CausalEdge[];
+  summary: {
+    node_count: number;
+    edge_count: number;
+  };
+}
+
+export interface CausalGraphListItem {
+  id: number;
+  run_name: string;
+  algorithm: string;
+  created_at: string;
+  node_count: number;
+  edge_count: number;
+  parameters: Record<string, unknown>;
+}

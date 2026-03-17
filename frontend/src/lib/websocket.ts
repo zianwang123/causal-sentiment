@@ -14,7 +14,12 @@ class WebSocketClient {
     if (typeof window === "undefined") return;
     if (this.ws?.readyState === WebSocket.OPEN) return;
 
-    this.ws = new WebSocket(`${WS_URL}/ws`);
+    try {
+      this.ws = new WebSocket(`${WS_URL}/ws`);
+    } catch {
+      this.scheduleReconnect();
+      return;
+    }
 
     this.ws.onopen = () => {
       console.log("[WS] Connected");
