@@ -120,7 +120,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/yourusername/causal-sentiment.git
+   git clone https://github.com/zianwang123/causal-sentiment.git
    cd causal-sentiment
    ```
 
@@ -149,6 +149,8 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
    REDDIT_CLIENT_ID=
    REDDIT_CLIENT_SECRET=
    ```
+
+   > **Note:** Without `FRED_API_KEY` and `NEWSAPI_KEY`, the agent will use **mock data** for FRED macro series and news headlines. The agent is told the data is synthetic, so analysis results will be illustrative rather than based on real market conditions. Add your own API keys for real data — both are free: [FRED](https://fred.stlouisfed.org/docs/api/api_key.html), [NewsAPI](https://newsapi.org/register).
 
 4. First-time install:
    ```bash

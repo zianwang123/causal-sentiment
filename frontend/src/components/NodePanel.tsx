@@ -268,21 +268,21 @@ export default function NodePanel() {
       setRawData([]);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setRawLoading(true);
-    fetch(`${API}/api/graph/raw-data/${selectedNode.id}?limit=5`)
+    fetch(`${API}/api/graph/raw-data/${selectedNode.id}?limit=5`, { signal: controller.signal })
       .then((r) => r.json())
       .then((data: RawDataPoint[]) => {
-        if (!cancelled) setRawData(data);
+        setRawData(data);
       })
-      .catch(() => {
-        if (!cancelled) setRawData([]);
+      .catch((e) => {
+        if (e.name !== "AbortError") setRawData([]);
       })
       .finally(() => {
-        if (!cancelled) setRawLoading(false);
+        if (!controller.signal.aborted) setRawLoading(false);
       });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [selectedNode?.id]);
 

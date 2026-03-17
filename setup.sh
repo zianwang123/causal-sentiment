@@ -43,14 +43,14 @@ echo "Setting up backend..."
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt -q
+pip install -r requirements.txt
 cd ..
 echo "Backend dependencies installed"
 
 # Frontend
 echo "Setting up frontend..."
 cd frontend
-npm install --silent
+npm install
 cd ..
 echo "Frontend dependencies installed"
 

@@ -117,7 +117,7 @@ export default function TopologySuggestions() {
               </button>
             </div>
             <p className="text-[10px] text-gray-500 mt-1">
-              Claude analyzes correlated but unconnected nodes and suggests new
+              Analyzes correlated but unconnected nodes and suggests new
               causal edges for your review.
             </p>
           </div>
@@ -131,7 +131,7 @@ export default function TopologySuggestions() {
             {suggestions.length === 0 ? (
               <div className="text-xs text-gray-500 text-center py-6">
                 {generating
-                  ? "Claude is analyzing correlations..."
+                  ? "Analyzing correlations..."
                   : "No pending suggestions. Run several analyses first to build observation history (need 5+ data points per node), then click Generate."}
               </div>
             ) : (

@@ -36,6 +36,11 @@ until docker exec "$DB_CONTAINER" pg_isready -U cs_user -q 2>/dev/null; do
   sleep 1
 done
 
+if [ ! -f backend/.venv/bin/activate ]; then
+  echo "ERROR: Backend not set up. Run ./setup.sh first."
+  exit 1
+fi
+
 echo "Starting backend..."
 cd backend
 source .venv/bin/activate

@@ -42,11 +42,11 @@ export default function PredictionsPanel() {
     fetch(`${API}/api/agent/predictions?limit=20`)
       .then((r) => r.json())
       .then(setPredictions)
-      .catch(() => {});
+      .catch((e) => console.error("Failed to fetch predictions:", e));
     fetch(`${API}/api/agent/predictions/summary`)
       .then((r) => r.json())
       .then(setSummary)
-      .catch(() => {});
+      .catch((e) => console.error("Failed to fetch prediction summary:", e));
   };
 
   useEffect(() => {

@@ -29,6 +29,11 @@ export default function TimeSlider() {
 
   const now = useRef(new Date());
 
+  // Refresh "now" reference when slider is opened to avoid stale timestamps
+  useEffect(() => {
+    if (open) now.current = new Date();
+  }, [open]);
+
   const getTimestamp = useCallback(
     (step: number): Date => {
       const offset = (TOTAL_STEPS - step) * STEP_HOURS * 3600 * 1000;

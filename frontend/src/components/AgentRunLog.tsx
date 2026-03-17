@@ -23,7 +23,7 @@ export default function AgentRunLog() {
     fetch(`${API}/api/agent/runs?limit=20`)
       .then((r) => r.json())
       .then(setRuns)
-      .catch(() => {});
+      .catch((e) => console.error("Failed to fetch agent runs:", e));
   };
 
   useEffect(() => {
