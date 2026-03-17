@@ -291,7 +291,8 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 
 ---
 
-## Roadmap
+<details>
+<summary><h2>Roadmap</h2></summary>
 
 - [x] Three-phase agent reasoning (Plan → Analyze → Validate)
 - [x] Self-critique + confidence decomposition
@@ -312,6 +313,7 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)
+</details>
 
 ---
 
