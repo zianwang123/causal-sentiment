@@ -26,7 +26,9 @@ Traditional sentiment analysis tools treat assets in isolation — one stock, on
 
 This project captures that interconnectedness in a **directed causal graph** and makes it tangible through 3D visualization. Most macro analysts hold this causal model in their heads. This project makes it **explicit, visual, and machine-augmented**.
 
-### Shock propagation as a thinking tool
+
+<details>
+<summary><strong>Shock propagation as a thinking tool</strong></summary>
 
 The graph isn't just a pretty visualization — it's a reasoning framework. When you shock a node (say, oil sentiment drops to -0.8), the impact **propagates** through the causal network:
 
@@ -36,6 +38,7 @@ The graph isn't just a pretty visualization — it's a reasoning framework. When
 - **Uncorrelated nodes** — geopolitical risk is causally distant, impact decays to near-zero
 
 This is exactly how a macro strategist thinks about positioning: "if X happens, what gets hurt, what benefits, and what's uncorrelated?" The graph makes that reasoning visible and testable.
+</details>
 
 ---
 
@@ -61,7 +64,8 @@ For details on algorithms, formulas, and design rationale, see the **[Technical 
 
 ---
 
-## Architecture
+<details>
+<summary><h2>Architecture</h2></summary>
 
 ```
 Browser (localhost:3000)
@@ -73,20 +77,20 @@ Browser (localhost:3000)
        │ WebSocket (real-time push)
        ▼
 FastAPI Backend (localhost:8000)
-  ├── AI Agent (Claude/GPT, 3-phase loop, 11 tools)
+  ├── AI Agent (Claude/GPT, 3-phase loop, 12 tools)
   ├── Graph Engine (NetworkX, propagation, anomalies, regimes)
   ├── Data Pipeline (APScheduler, 10 jobs, disabled by default)
   └── PostgreSQL + TimescaleDB + Redis
 
 External Data Sources:
-  FRED · yfinance · 27 RSS feeds · NewsAPI · Reddit · SEC EDGAR
+  FRED · yfinance · 30 RSS feeds · NewsAPI · Reddit · SEC EDGAR
 ```
 
 For detailed architecture, agent design, and concurrency model, see **[Technical Manual §2, §8, §17](docs/TECHNICAL_MANUAL.md)**.
+</details>
 
----
-
-## Tech Stack
+<details>
+<summary><h2>Tech Stack</h2></summary>
 
 | Layer | Technology |
 |-------|-----------|
@@ -111,6 +115,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 | **NewsAPI** | Headlines and articles (optional fallback) | On agent trigger |
 | **Reddit** | Social sentiment (r/wallstreetbets, r/economics, r/stocks) | Every 2h |
 | **SEC EDGAR** | Earnings, financial filings | Daily |
+</details>
 
 ---
 
@@ -155,7 +160,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
    REDDIT_CLIENT_SECRET=
    ```
 
-   > **Note:** News works out of the box via **27 curated RSS feeds** (no API key needed). Without `FRED_API_KEY`, the agent uses **mock data** for FRED macro series — add your own for real data (free: [FRED](https://fred.stlouisfed.org/docs/api/api_key.html)). `NEWSAPI_KEY` is optional — RSS feeds are the primary news source, NewsAPI is a fallback.
+   > **Note:** News works out of the box via **30 curated RSS feeds** (no API key needed). Without `FRED_API_KEY`, the agent uses **mock data** for FRED macro series — add your own for real data (free: [FRED](https://fred.stlouisfed.org/docs/api/api_key.html)). `NEWSAPI_KEY` is optional — RSS feeds are the primary news source, NewsAPI is a fallback.
 
 4. First-time install:
    ```bash
@@ -198,7 +203,8 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 
 ---
 
-## Project Structure
+<details>
+<summary><h2>Project Structure</h2></summary>
 
 ```
 causal-sentiment/
@@ -259,10 +265,10 @@ causal-sentiment/
 ```
 
 For detailed file descriptions, see **[Technical Manual](docs/TECHNICAL_MANUAL.md)**.
+</details>
 
----
-
-## FAQ
+<details>
+<summary><h2>FAQ</h2></summary>
 
 **Q: How accurate is the sentiment analysis?**
 A: This is experimental. The agent's quality depends on the LLM, data freshness, and graph structure. The built-in prediction tracking measures accuracy over time. Treat it as a research tool, not a trading signal.
@@ -281,6 +287,7 @@ A: Yes. You only need one API key. Set `LLM_PROVIDER` in `.env`. You can switch 
 
 **Q: Where can I learn more about how the algorithms work?**
 A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, formula, constant, and design rationale in detail — propagation, regime detection, anomaly detection, dynamic weight learning, agent architecture, and more.
+</details>
 
 ---
 
@@ -308,7 +315,8 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 
 ---
 
-## Causal Discovery Module
+<details>
+<summary><h2>Causal Discovery Module</h2></summary>
 
 In addition to the hand-crafted expert graph (52 nodes, 117 edges), the project includes a **computational causal discovery module** that discovers the network structure directly from historical data — no manual edge definitions needed.
 
@@ -336,6 +344,7 @@ In addition to the hand-crafted expert graph (52 nodes, 117 edges), the project 
 The frontend lets you toggle between expert and discovered modes. Both support shock simulation, animation, and node inspection.
 
 For the full technical specification, see **[backend/app/causal_discovery/README.md](backend/app/causal_discovery/README.md)**.
+</details>
 
 ---
 
