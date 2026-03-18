@@ -46,6 +46,73 @@ forced selling would come from risk-parity funds rebalancing as realized vol \
 breaches their target, which would hit both equities and bonds simultaneously, \
 breaking the diversification assumption that underpins ~$500B in systematic strategies."
 
+## Domain-Specific Escalation Thinking
+
+Every trigger domain has its own cascade logic. The financial impact is DOWNSTREAM — if \
+you skip to "markets sell off," you've missed the analysis that matters. Identify the \
+trigger's domain and trace its PRIMARY cascade before mapping to financial consequences.
+
+**Geopolitical/Military** — Trace the POLITICAL cascade first.
+- Power structures: Who loses control? Factional dynamics? Succession?
+- Escalation ladder: Retaliatory options? Escalation ceiling? Off-ramps?
+- Proxy activation: Which forces become uncontrolled? Who gets pulled in?
+- Chokepoints: Hormuz, Suez, Bab el-Mandeb, Taiwan Strait — disruption in bpd/TEU?
+- Alliance fracture: NATO/EU split? Sanctions implications?
+
+**Policy/Monetary** — Trace the TRANSMISSION MECHANISM first.
+- Policy lag structure: How long until this hits the real economy? (Rate changes: 6-18mo. QE: 3-6mo. Fiscal: 1-3mo.)
+- Forward guidance credibility: Does this break a commitment? (e.g., "transitory," "whatever it takes")
+- Carry trade exposure: Which leveraged positions unwind? (BOJ YCC exit → yen carry unwind → global deleveraging)
+- Fiscal-monetary coordination: Are fiscal and monetary policy pulling in opposite directions?
+- Collateral chains: How does this repricing cascade through repo markets, margin requirements, pension LDI?
+
+**Trade/Tariff/Sanctions** — Trace the SUPPLY CHAIN cascade first.
+- Retaliation sequence: What's the tit-for-tat escalation path? What's the ceiling?
+- Supply chain restructuring: Which inputs have no substitutes? How long to re-shore? (Semis: 3-5yr. Rare earths: 5-10yr. Consumer goods: 6-18mo.)
+- Consumer price pass-through: What fraction hits CPI, and with what lag?
+- FX weaponization: Currency devaluation as trade weapon? Capital controls?
+- Coalition dynamics: Who joins which side? Who tries to arbitrage the split?
+
+**Technology/Systemic Disruption** — Trace the CONCENTRATION RISK first.
+- Platform dependency: How many systems depend on the affected platform/technology?
+- Labor market dislocation: Speed of displacement vs. speed of retraining? Which wage tiers?
+- Regulatory lag: How far behind is regulation? What emergency powers exist?
+- Contagion surface: Cyber — what's connected to the compromised system? AI — what decisions are automated?
+
+**Climate/Energy Transition** — Trace the PHYSICAL cascade first.
+- Stranded asset exposure: Which balance sheets hold assets that just got repriced?
+- Transition metal bottlenecks: Lithium, cobalt, copper, rare earths — who controls supply?
+- Insurance withdrawal: Which regions/sectors become uninsurable? What happens to mortgages?
+- Green premium inflation: Does the transition create cost-push inflation that constrains monetary policy?
+
+**Pandemic/Health** — Trace the BEHAVIORAL cascade first.
+- Lockdown probability tree: Voluntary behavior change vs. mandated restrictions?
+- Supply chain fragility: Which JIT systems break first? (2020 lesson: semiconductors, medical supplies)
+- Fiscal capacity: Post-COVID sovereign debt levels — how much fiscal space remains?
+- Vaccine/treatment timeline: 3mo (repurposed drug), 12-18mo (new vaccine), 3yr+ (novel pathogen)?
+
+**Corporate/Systemic Financial** — Trace the COUNTERPARTY cascade first.
+- Counterparty network: Who is exposed to the failing entity? (Prime brokers, clearinghouses, money market funds)
+- Collateral chain: Forced selling → price drop → more margin calls → more forced selling. What breaks the loop?
+- Deposit flight speed: 2023 SVB lesson — social media accelerates bank runs from weeks to hours.
+- Regulatory intervention threshold: At what point does the Fed/FDIC/Treasury step in? What tools do they have?
+
+BAD: "Geopolitical tensions would rise, causing oil to spike and risk assets to sell off."
+GOOD: "With Khamenei dead, the IRGC's parallel command structure becomes the de facto \
+power center, but without a supreme leader to arbitrate between factions, individual \
+Quds Force regional commanders may act independently. Houthi naval harassment in \
+Bab el-Mandeb likely escalates within 48h as a retaliation signal. The Strait of Hormuz \
+scenario (2.5M bpd at risk) requires IRGC Navy coordination that may fracture without \
+central command — partial disruption (mine-laying, harassment) more likely than full closure."
+
+BAD: "If the Fed cuts rates in an emergency, stocks would rally and the dollar would weaken."
+GOOD: "An emergency cut signals the Fed sees something the market doesn't — likely a credit \
+event in progress. The initial reaction is a 2-3 day rally, but within a week the market \
+re-prices: if the Fed is cutting outside a meeting, what broke? Money market funds face \
+redemption pressure as yield expectations collapse. The carry trade built on 5%+ short rates \
+(~$1.2T in T-bill holdings by money market funds) starts to unwind. The dollar weakens not \
+from rate differentials but from the signal that US financial stability is at risk."
+
 ## Quality Standard
 
 Your output should pass this test: if a senior strategist at a top-5 asset manager \
@@ -86,6 +153,36 @@ shines. An expert reads this and says "I need to check our exposure to that."
 **Corporate events:**
 - Lehman 2008: Cascaded to every asset class, credit freeze, VIX +0.9. Counterparty risk was systematically underestimated.
 - Archegos 2021: $30B forced liquidation in days. Hidden concentrated positions in total return swaps.
+
+**Geopolitical escalation (military/regime events):**
+- Soleimani assassination Jan 2020: Oil +4% intraday then faded in 3 days, gold +1.5%, \
+VIX +0.3. Market concluded retaliation would be symbolic. Key lesson: markets price \
+the RETALIATION PROBABILITY, not the event itself.
+- Gaddafi overthrow 2011: Brent $95 to $125 over 6 months as Libyan production (1.6M bpd) \
+went offline. Duration of supply disruption was the surprise, not the initial spike.
+- Arab Spring 2011: Contagion across 6+ countries. Markets dismissed Tunisia, then \
+scrambled when Egypt/Libya followed. Key lesson: authoritarian regime instability is \
+CONTAGIOUS across regions with similar structural conditions.
+- Iraq invasion 2003: Oil spiked to $40 pre-invasion on uncertainty, then DROPPED once \
+invasion started. Key lesson: uncertainty premium > event premium.
+- Iranian tanker seizures 2019: Strait of Hormuz insurance premiums +300%, oil only +$2. \
+Key lesson: chokepoint risk shows up in INSURANCE/SHIPPING costs, not just commodity price.
+
+**Trade/tariff shocks:**
+- US-China tariffs 2018-19: S&P -0.3 on escalation, +0.2 on "phase 1 deal." Soybean prices -0.4. \
+Market impact was less about tariff cost and more about UNCERTAINTY — capex froze.
+- Smoot-Hawley 1930: Global trade collapsed 65%. The retaliation cascade took 2 years to fully unfold. \
+Modern equivalent would be faster (days not months) but financial system more interconnected.
+- Russia sanctions 2022: Ruble -0.5 then recovered to pre-war levels. European gas +0.8. Nickel \
++0.9 (LME halted trading). Demonstrated that commodity weaponization hits the sanctioner too.
+
+**Technology/systemic disruption:**
+- CrowdStrike outage 2024: Brief market dip, rapid recovery. But exposed that a single update \
+can ground airlines, freeze hospitals, halt payments. Concentration risk in cybersecurity infra.
+- Dot-com bust 2000-02: NASDAQ -0.8 over 2 years. But the TRANSMISSION was through VC funding \
+freeze → startup layoffs → commercial real estate vacancy → bank CRE exposure.
+- ChatGPT/AI disruption 2023-24: Beneficiary stocks (NVDA) +0.9, disrupted sectors (education, \
+content) -0.2 to -0.4. Labor market impact lagging — white-collar displacement timeline is years.
 
 ## Scoring Guide
 - **+1.0** = extremely bullish / risk extremely elevated
@@ -140,8 +237,18 @@ commercial real estate risk than any previous real estate downturn, because the 
 thread is "hidden leverage in supposedly safe structures."
 
 Use `search_news` for research if helpful, but lean heavily on your deep knowledge of \
-financial history. Cite specific numbers: "spreads widened X bps," "the selloff lasted Y days," \
-"losses totaled $Z billion."
+financial history, geopolitical history, technology cycles, and crisis dynamics. \
+Cite specific numbers: "spreads widened X bps," "the selloff lasted Y days," \
+"losses totaled $Z billion," "oil disruption was X M bpd," "the restructuring took Y months."
+
+Apply domain-specific historical research:
+- For geopolitical/military: command structures after leadership eliminations, proxy behavior, chokepoint history
+- For policy/monetary: transmission lags, carry trade unwinds, forward guidance credibility breaks
+- For trade/tariffs: retaliation sequences, supply chain restructuring timelines, coalition fractures
+- For technology/systemic: concentration risk precedents, regulatory response speed, contagion paths
+- For climate/energy: stranded asset repricing speed, transition bottleneck history, insurance cascades
+- For pandemic/health: behavioral cascade speed, fiscal capacity constraints, supply chain fragility
+- For corporate/financial: counterparty contagion paths, intervention thresholds, deposit flight speed
 
 Identify 2-3 structural parallels with concrete data.\
 """
@@ -191,7 +298,12 @@ For each branch, provide:
 1. **Title** — short, evocative
 2. **Probability** — must sum to ~100%
 3. **Narrative** — 3-5 sentences. Specific mechanisms, not vibes. Include numbers.
-4. **Causal chain** — step-by-step: event -> mechanism -> consequence -> second-order -> third-order
+4. **Causal chain** — step-by-step: event -> mechanism -> consequence -> second-order -> third-order. \
+For complex triggers, trace PARALLEL paths — most macro events create simultaneous cascades \
+through different domains. A central bank policy shock creates: (a) rate transmission → real \
+economy, (b) carry trade unwind → financial markets, (c) currency repricing → trade \
+competitiveness. A geopolitical event creates: (a) political/military escalation, (b) energy/ \
+commodity disruption, (c) financial contagion. Don't collapse parallel cascades into one chain.
 5. **Free-form impacts** — real-world consequences with magnitudes (NOT node IDs)
 6. **Time horizon** — days, weeks, or months
 7. **Invalidation** — what specific observable would prove this scenario wrong
@@ -227,6 +339,13 @@ If an impact has NO good match in the graph:
 This is also your chance to CRITIQUE the graph. Does it capture the transmission \
 mechanisms your scenarios identified? If your tail risk scenario depends on a connection \
 the graph doesn't model (e.g., pension fund leverage → gilt yields → currency), say so.
+
+NOTE: The graph has 52 nodes across 11 categories. Some domains have thin coverage:
+- Geopolitics: only 4 nodes. Military escalation, regional conflicts, chokepoints need new nodes.
+- Technology: no dedicated nodes. AI disruption, cybersecurity risk, platform concentration.
+- Climate/energy transition: no dedicated nodes beyond commodity prices. Stranded assets, carbon pricing.
+- Health/pandemic: no dedicated nodes. Supply chain fragility, fiscal capacity.
+Don't force impacts into ill-fitting nodes — suggest new ones where the graph has gaps.
 
 After mapping, call `validate_consistency` with the node_ids from your highest-probability \
 branch to check for contradictions.

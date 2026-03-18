@@ -34,10 +34,196 @@ logger = logging.getLogger(__name__)
 
 # Phase round budgets
 PHASE1_ROUNDS = 3   # News ingestion
-PHASE2_ROUNDS = 3   # Historical research
-PHASE3_ROUNDS = 5   # Unconstrained generation
+PHASE2_ROUNDS = 4   # Historical research (geopolitical triggers need more depth)
+PHASE3_ROUNDS = 6   # Unconstrained generation (multi-path cascades need more room)
 PHASE4_ROUNDS = 5   # Graph mapping + output
-MAX_ROUNDS = PHASE1_ROUNDS + PHASE2_ROUNDS + PHASE3_ROUNDS + PHASE4_ROUNDS  # 16
+MAX_ROUNDS = PHASE1_ROUNDS + PHASE2_ROUNDS + PHASE3_ROUNDS + PHASE4_ROUNDS  # 18
+
+# Domain-specific trigger keywords — used to inject targeted research guidance in Phase 1
+_DOMAIN_KEYWORDS: dict[str, set[str]] = {
+    "geopolitical": {
+        "war", "invasion", "strike", "assassination", "killed", "death", "coup",
+        "military", "missile", "nuclear", "embargo", "blockade",
+        "strait", "hormuz", "suez", "taiwan", "nato", "irgc", "hezbollah",
+        "houthi", "proxy", "escalation", "retaliation", "regime", "succession",
+        "iran", "russia", "israel", "gaza", "ukraine",
+    },
+    "policy_monetary": {
+        "fed", "fomc", "ecb", "boj", "boe", "pboc",
+        "qe", "qt", "taper", "pivot",
+        "dovish", "hawkish", "transitory",
+        "repo", "ldi", "pension",
+        # Multi-word phrases (matched via substring)
+        "rate cut", "rate hike", "yield curve control", "emergency cut",
+        "emergency rate", "balance sheet", "inflation target",
+        "forward guidance",
+    },
+    "trade_tariff": {
+        "tariff", "tariffs", "reshoring", "nearshoring", "decoupling",
+        "cbam", "wto",
+        # Multi-word phrases
+        "trade war", "trade deal", "trade deficit",
+        "import duty", "export ban", "carbon border",
+        "supply chain", "rare earth", "semiconductor ban",
+        "chip ban", "entity list",
+    },
+    "technology_systemic": {
+        "cyberattack", "cyber", "ransomware", "hack", "outage",
+        "automation", "displacement", "deepfake", "quantum",
+        # Multi-word phrases
+        "cloud outage", "ai disruption", "artificial intelligence",
+        "infrastructure attack", "grid failure", "systemic outage",
+        "platform monopoly",
+    },
+    "climate_energy": {
+        "climate", "hurricane", "wildfire", "drought", "flood",
+        "renewable", "solar", "wind", "lithium", "cobalt", "transition",
+        # Multi-word phrases
+        "carbon tax", "carbon price", "stranded asset", "ice ban",
+        "ev mandate", "extreme weather", "insurance withdrawal",
+        "crop failure", "food crisis", "heat wave",
+    },
+    "pandemic_health": {
+        "pandemic", "epidemic", "outbreak", "pathogen", "virus", "variant",
+        "lockdown", "quarantine", "vaccine", "mortality",
+        # Multi-word phrases
+        "bird flu", "avian flu", "h5n1", "who emergency",
+        "supply shortage",
+    },
+    "corporate_financial": {
+        "default", "bankruptcy", "stablecoin", "depeg",
+        "counterparty", "contagion", "liquidation",
+        "clearinghouse",
+        # Multi-word phrases
+        "bank run", "bank failure", "margin call",
+        "commercial real estate", "credit crunch",
+        "forced selling", "money market", "prime broker",
+        "hedge fund collapse",
+    },
+}
+
+# Domain-specific Phase 1 research supplements
+_DOMAIN_SUPPLEMENTS: dict[str, str] = {
+    "geopolitical": """\
+
+## Geopolitical Focus
+
+This trigger involves a geopolitical/military event. In addition to market context:
+1. Research the specific actors and their command structures
+2. Identify proxy networks and alliance commitments that could activate
+3. Assess physical chokepoints or infrastructure at risk
+4. Search for the political/military dimensions, not just the market reaction
+
+Example queries: "Iran IRGC command structure", "Strait of Hormuz shipping risk", \
+"Middle East proxy forces escalation".\
+""",
+    "policy_monetary": """\
+
+## Monetary Policy Focus
+
+This trigger involves a central bank policy event. In addition to market context:
+1. Research the specific policy tool and its transmission mechanism timeline
+2. Identify leveraged positions that depend on current rate/liquidity regime
+3. Assess forward guidance credibility — has a commitment been broken?
+4. Search for carry trade and collateral chain implications, not just rate direction
+
+Example queries: "yen carry trade size estimates", "money market fund T-bill holdings", \
+"pension LDI leverage exposure".\
+""",
+    "trade_tariff": """\
+
+## Trade/Tariff Focus
+
+This trigger involves a trade policy or sanctions event. In addition to market context:
+1. Research which specific supply chains are affected and substitution timelines
+2. Identify the most likely retaliation sequence and its escalation ceiling
+3. Assess which countries/companies are caught in the crossfire
+4. Search for the supply chain restructuring timeline, not just the headline tariff rate
+
+Example queries: "semiconductor supply chain China alternatives", "rare earth processing \
+outside China", "agricultural export retaliation targets".\
+""",
+    "technology_systemic": """\
+
+## Technology/Systemic Focus
+
+This trigger involves technology disruption or systemic infrastructure risk. In addition to market context:
+1. Research concentration risk — how many systems depend on the affected platform/technology?
+2. Identify cascading dependencies (a cloud outage hits payments, logistics, healthcare simultaneously)
+3. Assess regulatory response timelines and emergency powers
+4. Search for the labor market or productivity implications, not just stock price impact
+
+Example queries: "cloud provider market share concentration", "critical infrastructure \
+dependencies", "AI labor displacement timeline estimates".\
+""",
+    "climate_energy": """\
+
+## Climate/Energy Transition Focus
+
+This trigger involves climate events or energy transition policy. In addition to market context:
+1. Research physical exposure — which regions, crops, or infrastructure are directly affected?
+2. Identify stranded asset exposure on bank and insurer balance sheets
+3. Assess transition metal supply bottlenecks if the event accelerates green policy
+4. Search for the insurance and mortgage market implications, not just commodity prices
+
+Example queries: "flood insurance withdrawal US coastal", "lithium supply deficit projections", \
+"stranded fossil fuel asset bank exposure".\
+""",
+    "pandemic_health": """\
+
+## Pandemic/Health Focus
+
+This trigger involves a health emergency or pandemic risk. In addition to market context:
+1. Research the pathogen characteristics — transmissibility, mortality, immune escape
+2. Identify supply chain nodes most vulnerable to disruption (semiconductors, medical, food)
+3. Assess fiscal capacity for stimulus — sovereign debt levels are much higher post-COVID
+4. Search for behavioral change implications (voluntary vs mandated), not just lockdown probability
+
+Example queries: "pandemic preparedness stockpile status", "sovereign debt capacity fiscal \
+stimulus", "JIT supply chain vulnerability assessment".\
+""",
+    "corporate_financial": """\
+
+## Corporate/Financial Systemic Focus
+
+This trigger involves a corporate failure or financial system stress. In addition to market context:
+1. Research counterparty exposure — who is the failing entity's prime broker, clearinghouse, creditors?
+2. Identify collateral chains that could create forced-selling cascades
+3. Assess deposit flight risk and the speed of social-media-accelerated bank runs
+4. Search for regulatory intervention threshold and available tools (FDIC, Fed 13(3), etc.)
+
+Example queries: "CRE loan maturity wall", "stablecoin reserve composition", \
+"prime broker concentrated exposure hedge funds".\
+""",
+}
+
+
+def _classify_trigger_domains(trigger: str) -> list[str]:
+    """Classify the trigger text into one or more domains.
+
+    Returns a list of matching domain names, ordered by keyword match count (descending).
+    Uses both single-word and multi-word phrase matching.
+    """
+    trigger_lower = trigger.lower()
+    trigger_words = set(trigger_lower.split())
+
+    domain_scores: dict[str, int] = {}
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        score = 0
+        for kw in keywords:
+            if " " in kw:
+                # Multi-word phrase: check substring
+                if kw in trigger_lower:
+                    score += 2  # Phrases are stronger signals
+            else:
+                # Single word: check word boundary
+                if kw in trigger_words:
+                    score += 1
+        if score > 0:
+            domain_scores[domain] = score
+
+    # Return domains sorted by score, highest first
+    return sorted(domain_scores.keys(), key=lambda d: domain_scores[d], reverse=True)
 
 
 def _get_phase(round_num: int) -> str:
@@ -131,9 +317,15 @@ async def run_scenario_extrapolation(
     submitted_result: dict | None = None
 
     try:
-        # Phase 1: News ingestion
+        # Phase 1: News ingestion — inject domain-specific research guidance
+        phase1_content = PHASE1_NEWS_PROMPT.format(trigger=trigger)
+        detected_domains = _classify_trigger_domains(trigger)
+        for domain in detected_domains[:2]:  # At most 2 supplements to prevent bloat
+            supplement = _DOMAIN_SUPPLEMENTS.get(domain, "")
+            if supplement:
+                phase1_content += supplement
         messages: list[dict] = [
-            {"role": "user", "content": PHASE1_NEWS_PROMPT.format(trigger=trigger)},
+            {"role": "user", "content": phase1_content},
         ]
 
         for round_num in range(PHASE1_ROUNDS):

@@ -57,7 +57,7 @@ SUBMIT_SCENARIOS = {
                         "causal_chain": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Step-by-step causal chain: ['event', '-> consequence 1', '-> consequence 2']",
+                            "description": "Step-by-step causal chain. Single-path: ['event', '-> consequence 1', '-> consequence 2']. For multi-path cascades, label parallel paths: ['TRIGGER: event', 'PATH A (political): -> power vacuum', '-> factional fragmentation', 'PATH B (energy): -> chokepoint threat', '-> oil spike', 'PATH C (financial): -> VIX spike', '-> flight to safety']. Each path 2-3 hops deep.",
                         },
                         "time_horizon": {
                             "type": "string",
