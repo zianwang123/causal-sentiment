@@ -114,6 +114,79 @@ export interface Annotation {
   updated_at: string;
 }
 
+// Scenario extrapolation engine
+export interface ScenarioShock {
+  node_id: string;
+  shock_value: number; // [-1, 1]
+  reasoning: string;
+  original_impact?: string; // free-form pre-mapping description
+}
+
+export interface ScenarioNodeSuggestion {
+  suggested_id: string;
+  suggested_label: string;
+  suggested_type: string;
+  description: string;
+  reasoning?: string;
+}
+
+export interface ScenarioEdgeSuggestion {
+  source_id: string;
+  target_id: string;
+  direction: string;
+  reasoning: string;
+}
+
+export interface ScenarioBranch {
+  title: string;
+  probability: number; // 0-1
+  narrative: string;
+  causal_chain: string[];
+  shocks: ScenarioShock[];
+  time_horizon: string; // "days" | "weeks" | "months"
+  invalidation?: string;
+  node_suggestions?: ScenarioNodeSuggestion[];
+  edge_suggestions?: ScenarioEdgeSuggestion[];
+}
+
+export interface ScenarioResult {
+  id: number;
+  trigger: string;
+  trigger_type: string;
+  status: string;
+  branches: ScenarioBranch[];
+  research_summary: string | null;
+  historical_parallels: string | null;
+  selected_branch_idx: number | null;
+  simulation_result: Record<string, unknown> | null;
+  error: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface ScenarioSummary {
+  id: number;
+  trigger: string;
+  trigger_type: string;
+  status: string;
+  branch_count: number;
+  created_at: string;
+}
+
+export interface QuickTrigger {
+  headline: string;
+  source: string;
+  suggested_prompt: string;
+}
+
+export interface ScenarioProgress {
+  scenario_id: number;
+  round: number;
+  max_rounds: number;
+  phase: string;
+  total_tool_calls: number;
+}
+
 export type NodeTypeShape = "sphere" | "cube" | "octahedron";
 
 export const NODE_TYPE_SHAPES: Record<string, NodeTypeShape> = {

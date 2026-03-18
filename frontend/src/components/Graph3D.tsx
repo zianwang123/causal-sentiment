@@ -130,6 +130,12 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     [portfolioNodeIds]
   );
 
+  const hypotheticalNodeIds = useGraphStore((s) => s.hypotheticalNodeIds);
+  const hypotheticalSet = useMemo(
+    () => new Set(hypotheticalNodeIds),
+    [hypotheticalNodeIds]
+  );
+
   // Fetch anomalies on mount and periodically
   useEffect(() => {
     fetchAnomalies();
@@ -284,6 +290,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
             const fade = [1, 0.7, 0.35, 0.15][dist] ?? 0.1;
             return sentimentToColor((node.sentiment ?? 0) * fade, node.id);
           }
+          if (hypotheticalSet.has(node.id)) return "#a855f7"; // Purple for hypothetical scenario nodes
           if (portfolioSet.has(node.id)) return "#f59e0b"; // Amber for portfolio
           if (anomalyNodeIds.has(node.id)) return "#facc15"; // Yellow for anomaly
           // During animation: gradually transition from grey to sentiment color

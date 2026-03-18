@@ -14,6 +14,7 @@ import TopologySuggestions from "@/components/TopologySuggestions";
 import UserGuide from "@/components/UserGuide";
 import NodeLocator from "@/components/NodeLocator";
 import SimulationPanel from "@/components/SimulationPanel";
+import ScenarioPanel from "@/components/ScenarioPanel";
 import CausalPanel from "@/components/CausalPanel";
 import CausalAnimationPlayer from "@/components/CausalAnimationPlayer";
 import AutomationToggles from "@/components/AutomationToggles";
@@ -59,6 +60,7 @@ export default function Home() {
         {isExpert ? <NodePanel /> : <CausalNodePanel />}
         <UserGuide />
         {isExpert && <SimulationPanel />}
+        {isExpert && <ScenarioPanel />}
         {isExpert && <SentimentTimeline />}
 
         {/* Animation player: above bottom toolbar in discovered mode */}

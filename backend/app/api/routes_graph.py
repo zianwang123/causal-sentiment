@@ -90,6 +90,36 @@ async def get_full_graph(session: AsyncSession = Depends(get_session)):
         for e in edges
     ]
 
+    # Include hypothetical nodes/edges (in-memory only, from scenario evolution)
+    hypo_node_ids = getattr(app_state, "hypothetical_node_ids", set())
+    for nid in hypo_node_ids:
+        if nid in app_state.graph:
+            data = app_state.graph.nodes[nid]
+            node_list.append(NodeOut(
+                id=nid,
+                label=data.get("label", nid),
+                node_type=data.get("node_type", "macro"),
+                description=data.get("description", ""),
+                composite_sentiment=0.0,
+                confidence=0.0,
+                evidence=[],
+                centrality=0.0,
+            ))
+
+    hypo_edge_keys = getattr(app_state, "hypothetical_edge_keys", set())
+    for src, tgt in hypo_edge_keys:
+        if app_state.graph.has_edge(src, tgt):
+            edata = app_state.graph.edges[src, tgt]
+            edge_list.append(EdgeOut(
+                id=0,
+                source_id=src,
+                target_id=tgt,
+                direction=edata.get("direction", "positive"),
+                base_weight=edata.get("base_weight", 0.3),
+                dynamic_weight=edata.get("dynamic_weight", 0.3),
+                description=edata.get("description", ""),
+            ))
+
     return GraphOut(nodes=node_list, edges=edge_list)
 
 

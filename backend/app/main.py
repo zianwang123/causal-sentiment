@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.api.routes_agent import router as agent_router
 from app.api.routes_graph import router as graph_router, annotations_router
 from app.api.routes_portfolio import router as portfolio_router
+from app.api.routes_scenario import router as scenario_router
 from app.api.websocket import websocket_endpoint
 from app.db.connection import async_session, engine
 from app.graph_engine.propagation import build_networkx_graph
@@ -31,6 +32,9 @@ logger = logging.getLogger(__name__)
 class AppState:
     graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     graph_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # Hypothetical nodes/edges added by scenario "Evolve Graph" — removed on analysis run
+    hypothetical_node_ids: set = field(default_factory=set)
+    hypothetical_edge_keys: set = field(default_factory=set)  # set of (source_id, target_id)
 
 
 app_state = AppState()
@@ -149,6 +153,7 @@ app.include_router(agent_router)
 app.include_router(portfolio_router)
 app.include_router(annotations_router)
 app.include_router(causal_router)
+app.include_router(scenario_router)
 app.add_api_websocket_route("/ws", websocket_endpoint)
 
 

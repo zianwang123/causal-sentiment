@@ -27,8 +27,9 @@
 19. [Data Freshness & Latency](#19-data-freshness--latency)
 20. [Portfolio Overlay](#20-portfolio-overlay)
 21. [Backtesting](#21-backtesting)
-22. [Limitations & Known Issues](#22-limitations--known-issues)
-23. [FAQ & Design Rationale](#23-faq--design-rationale)
+22. [Scenario Extrapolation Engine](#22-scenario-extrapolation-engine-macro-sim)
+23. [Limitations & Known Issues](#23-limitations--known-issues)
+24. [FAQ & Design Rationale](#24-faq--design-rationale)
 
 ---
 
@@ -1350,7 +1351,72 @@ For a given node:
 
 ---
 
-## 22. Limitations & Known Issues
+## 22. Scenario Extrapolation Engine ("Macro Sim")
+
+The scenario engine is a strategic foresight tool that generates branching probability-weighted scenarios from any trigger — a news event, a hypothetical, or an auto-picked headline.
+
+### Design: "Generate First, Map Second"
+
+The agent reasons freely about real-world consequences first (unconstrained by the graph's 52 nodes), THEN is shown the graph topology and asked to map its impacts. This avoids anchoring bias and enables graph evolution — the agent can suggest new nodes and edges for impacts that don't fit the existing graph.
+
+### 5-Phase Agent Loop (max 16 rounds)
+
+| Phase | Rounds | Tools | Purpose |
+|-------|--------|-------|---------|
+| 1. Situational Awareness | 2-3 | `search_news` | Understand current state, not just the headline |
+| 2. Structural History | 2-3 | `search_news`, LLM knowledge | Find structural parallels — what systemic conditions preceded past crises that rhyme with now? |
+| 3. Scenario Generation | 3-5 | `fetch_market_prices` | Build 2-3 branches with free-form impacts. Base case (expert nods), alternative (expert pauses), tail risk (expert picks up the phone) |
+| 4. Graph Mapping | 3-5 | `get_graph_topology`, `validate_consistency` | Map impacts to graph nodes, suggest new nodes/edges, validate consistency |
+| 5. Output | - | `submit_scenarios` | Structured JSON with branches, shocks, suggestions |
+
+### Isolation Principle
+
+The scenario agent reuses existing **code** (search_news, fetch_market_prices, validate_consistency, LLM client, WebSocket) but NEVER reads previous agent **outputs** (stored sentiments, past agent runs, prediction history). It reads only graph topology (nodes + edges = domain knowledge). Shocks are generated relative to neutral (0), not relative to current graph sentiment.
+
+### Three Branch Types
+
+- **Base case (~50-60%)**: Well-reasoned mainstream scenario with clear transmission mechanics
+- **Alternative (~25-35%)**: Non-obvious scenario connecting domains most analysts treat separately
+- **Tail risk (~5-15%)**: The scenario where a consensus assumption breaks — not random doom, but a specific mechanism that's being systematically underpriced
+
+### Calibration
+
+Shock values are calibrated against historical anchors: 2008 GFC (S&P -0.9), 2020 COVID (VIX +0.95), 2022 rate shock (fed_funds +0.9), SVB 2023 (regional banks -0.6), etc. The agent is instructed to use specific mechanisms ("risk-parity funds de-leveraging as realized vol breaches target") rather than vague directions ("markets sell off").
+
+### Graph Evolution
+
+When the agent identifies impacts that don't map to existing nodes, it suggests new nodes (stored as `NodeSuggestion`) and edges (stored as `EdgeSuggestion`). Users can "Apply + Evolve" to temporarily add these to the in-memory graph (shown in purple). Hypothetical nodes are removed when the user runs a full analysis or clicks "Clear."
+
+### Multi-Shock Simulation
+
+When a user applies a scenario branch, each shock is propagated independently through the graph via `propagate_signal()`, and impacts are merged additively. This is read-only — no DB writes to graph state.
+
+### API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/scenarios` | Trigger scenario generation (background) |
+| GET | `/api/scenarios` | List recent scenarios |
+| GET | `/api/scenarios/{id}` | Get full scenario with branches |
+| POST | `/api/scenarios/{id}/apply` | Apply branch shocks to graph (read-only simulate) |
+| POST | `/api/scenarios/{id}/evolve` | Add hypothetical nodes/edges from branch |
+| POST | `/api/scenarios/reset-evolve` | Remove all hypothetical nodes/edges |
+| GET | `/api/scenarios/quick-triggers` | Auto-pick scenario-worthy events from RSS |
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `backend/app/agent/scenario_agent.py` | 5-phase orchestrator |
+| `backend/app/agent/scenario_prompts.py` | Strategic foresight prompts |
+| `backend/app/agent/scenario_schemas.py` | Tool schemas |
+| `backend/app/models/scenarios.py` | Scenario, ScenarioShock, NodeSuggestion models |
+| `backend/app/api/routes_scenario.py` | API endpoints |
+| `frontend/src/components/ScenarioPanel.tsx` | Scenario UI |
+
+---
+
+## 23. Limitations & Known Issues
 
 This section documents the system's known limitations honestly — both theoretical and practical.
 
@@ -1410,7 +1476,7 @@ The system is designed for **macro analysis on daily-to-weekly timescales**. FRE
 
 ---
 
-## 23. FAQ & Design Rationale
+## 24. FAQ & Design Rationale
 
 **Q: Why not just use a correlation matrix?**
 Correlation is symmetric and undirected. This graph has directed causal edges — "rising CPI → higher rate expectations → lower equities" is a chain with direction, sign, and magnitude. Correlation can't capture that.

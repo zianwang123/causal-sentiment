@@ -58,6 +58,12 @@ const sections = [
       "The agent records 2\u20133 high-conviction predictions during each validation phase. Each prediction has a direction (bullish/bearish/neutral), a target sentiment, a time horizon (default 7 days), and reasoning. Expired predictions are auto-resolved by comparing against actual sentiment. Open the \"Predictions\" panel in the bottom toolbar to see pending predictions (yellow), hits (green), and misses (red), along with the overall hit rate and magnitude score.",
   },
   {
+    id: "scenario",
+    title: "Scenario Engine",
+    content:
+      "Click \"Scenario Engine\" (top-right) to open the scenario panel. Click \"Generate Scenario\" \u2014 the agent scans current news, identifies the most scenario-worthy event, researches historical parallels, and generates 2\u20133 branching scenarios with probability weights. Each branch has a narrative, causal chain, mapped shocks, and suggested new nodes/edges. Click a branch to expand and see the full analysis. Edit shock values before applying. Click \"Apply to Graph\" to propagate the shocks through the causal network and see the cascade. If the branch suggests new nodes, they appear in purple on the graph (hypothetical). Click \"Export\" to download the scenario as JSON. Click \"Clear\" to remove results and hypothetical nodes. You can also type your own trigger (\"What if UBS collapses?\") in the text area below the main button.",
+  },
+  {
     id: "features",
     title: "More Features",
     items: [
@@ -94,7 +100,7 @@ export default function UserGuide() {
       {/* Trigger button */}
       <button
         onClick={() => setOpen(true)}
-        className="fixed top-4 right-[22rem] z-20 w-8 h-8 rounded-full bg-gray-900/90 border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center text-sm font-semibold backdrop-blur transition-colors"
+        className="fixed bottom-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-900/90 border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 flex items-center justify-center text-sm font-semibold backdrop-blur transition-colors"
         aria-label="Open user guide"
       >
         ?

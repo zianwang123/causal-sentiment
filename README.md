@@ -57,6 +57,7 @@ This is exactly how a macro strategist thinks about positioning: "if X happens, 
 - **Prediction tracking** — agent records falsifiable predictions, system auto-resolves and tracks hit rate
 - **Time travel** — replay graph state over the past 7 days
 - **Portfolio overlay** — add your positions, see them highlighted on the graph
+- **Scenario engine ("Macro Sim")** — strategic foresight tool: click "Generate Scenario" to produce 2-3 probability-weighted branching scenarios with causal chains, historical calibration, and multi-node shocks. The agent thinks freely first (unconstrained by the graph), then maps impacts to nodes and suggests new nodes/edges for gaps. Apply a branch to see the cascade on the 3D graph. Edit shocks before applying. Export scenarios as JSON.
 - **Edge discovery** — AI suggests new causal edges from correlation patterns
 - **Causal discovery module** — computationally discovers causal networks from data using PCMCI+, Granger, and RPCMCI algorithms, with DoWhy statistical validation (see [Causal Discovery](#causal-discovery-module) below)
 
@@ -199,6 +200,7 @@ For detailed architecture, agent design, and concurrency model, see **[Technical
 | **Switch LLM** | Toggle GPT/Claude in the top-left panel |
 | **Time travel** | Open "Time Travel" in the bottom toolbar |
 | **Portfolio** | Open "Portfolio" in the bottom toolbar to add positions |
+| **Scenario engine** | Click "Scenario Engine" (top-right) → "Generate Scenario" → view branching scenarios → "Apply to Graph" to see cascade |
 | **Topology suggestions** | Open "Evolve Graph" to see AI-suggested new causal edges |
 
 ---
@@ -314,6 +316,7 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [x] Risk-aware color scheme — red = market-threatening, green = market-friendly (inverted for risk nodes)
 - [x] Agent optimization — ~15 tool calls per run (batch-first, no re-fetching pre-fetched data)
 - [x] 16 bug fixes — LLM error handling/retry/timeout, graph rollback, batch propagation cascade fix, concurrent scheduler guard
+- [x] Scenario engine — strategic foresight agent with 5-phase loop, "generate first, map second" design, multi-shock simulate, graph evolution, export
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)

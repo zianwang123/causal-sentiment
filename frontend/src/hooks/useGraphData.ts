@@ -9,7 +9,11 @@ import type {
   ForceGraphNode,
   GraphData,
   GraphNode,
+  QuickTrigger,
   RegimeInfo,
+  ScenarioProgress,
+  ScenarioResult,
+  ScenarioSummary,
   SimulationResult,
 } from "@/types/graph";
 import { transformGraphData } from "@/lib/graphTransforms";
@@ -44,6 +48,13 @@ interface GraphStore {
   loading: boolean;
   error: string | null;
 
+  // Scenario engine
+  scenarioResult: ScenarioResult | null;
+  scenarioLoading: boolean;
+  scenarioProgress: ScenarioProgress | null;
+  scenarioHistory: ScenarioSummary[];
+  quickTriggers: QuickTrigger[];
+
   focusNode: (nodeId: string) => void;
   fetchGraph: () => Promise<void>;
   fetchAnomalies: () => Promise<void>;
@@ -56,6 +67,17 @@ interface GraphStore {
   updateFromWs: (data: GraphData) => void;
   runSimulation: (nodeId: string, sentiment: number) => Promise<void>;
   clearSimulation: () => void;
+
+  // Scenario actions
+  triggerScenario: (trigger: string, triggerType?: string) => Promise<void>;
+  fetchScenario: (id: number) => Promise<void>;
+  fetchScenarioHistory: () => Promise<void>;
+  fetchQuickTriggers: () => Promise<void>;
+  applyScenarioBranch: (scenarioId: number, branchIdx: number, overrides?: Array<{node_id: string; shock_value: number}>) => Promise<void>;
+  evolveGraph: (scenarioId: number, branchIdx: number) => Promise<void>;
+  resetEvolve: () => Promise<void>;
+  hypotheticalNodeIds: string[];
+  clearScenario: () => void;
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -73,6 +95,14 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   simulation: null,
   loading: false,
   error: null,
+
+  // Scenario engine
+  scenarioResult: null,
+  scenarioLoading: false,
+  scenarioProgress: null,
+  scenarioHistory: [],
+  quickTriggers: [],
+  hypotheticalNodeIds: [],
 
   fetchSnapshot: async (timestamp: string) => {
     try {
@@ -141,6 +171,11 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   setSelectedNode: (node) => set({ selectedNode: node }),
 
   triggerAnalysis: async (nodeIds) => {
+    // Reset hypothetical nodes before running analysis
+    const hypo = get().hypotheticalNodeIds;
+    if (hypo.length > 0) {
+      await get().resetEvolve();
+    }
     set({ agentRunning: true, agentProgress: null });
     try {
       const res = await fetch(`${API_URL}/api/agent/analyze`, {
@@ -189,6 +224,117 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   clearSimulation: () => set({ simulation: null }),
+
+  // Scenario engine methods
+  triggerScenario: async (trigger, triggerType) => {
+    set({ scenarioLoading: true, scenarioProgress: null, scenarioResult: null, error: null });
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trigger: trigger || "", trigger_type: triggerType || "user_prompt" }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Runs in background — result arrives via WebSocket
+    } catch (e) {
+      set({ error: (e as Error).message, scenarioLoading: false, scenarioProgress: null });
+    }
+  },
+
+  fetchScenario: async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios/${id}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: ScenarioResult = await res.json();
+      set({ scenarioResult: data, scenarioLoading: false });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  fetchScenarioHistory: async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios?limit=20`);
+      if (!res.ok) return;
+      const data: ScenarioSummary[] = await res.json();
+      set({ scenarioHistory: data });
+    } catch {
+      // Silently fail
+    }
+  },
+
+  fetchQuickTriggers: async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios/quick-triggers`);
+      if (!res.ok) return;
+      const data: QuickTrigger[] = await res.json();
+      set({ quickTriggers: data });
+    } catch {
+      // Silently fail
+    }
+  },
+
+  applyScenarioBranch: async (scenarioId, branchIdx, overrides) => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios/${scenarioId}/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_idx: branchIdx, shock_overrides: overrides || null }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Store as simulation result for graph overlay
+      set({
+        simulation: {
+          source_node: "scenario",
+          source_label: data.branch_title || "Scenario",
+          initial_signal: 0,
+          current_sentiment: 0,
+          shock_delta: 0,
+          regime: "",
+          impacts: data.impacts.map((i: { node_id: string; label: string; total_impact: number; contributing_shocks: string[]; hops: number }) => ({
+            node_id: i.node_id,
+            label: i.label,
+            impact: i.total_impact,
+            path: i.contributing_shocks,
+            hops: i.hops,
+          })),
+          total_nodes_affected: data.total_nodes_affected,
+        },
+      });
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  evolveGraph: async (scenarioId, branchIdx) => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios/${scenarioId}/evolve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_idx: branchIdx }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      set({ hypotheticalNodeIds: data.nodes_added?.map((n: { id: string }) => n.id) || [] });
+      // Graph auto-updates via WebSocket broadcast from backend
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  resetEvolve: async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/scenarios/reset-evolve`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      set({ hypotheticalNodeIds: [] });
+      // Graph auto-updates via WebSocket
+    } catch (e) {
+      set({ error: (e as Error).message });
+    }
+  },
+
+  clearScenario: () => set({ scenarioResult: null, scenarioLoading: false, scenarioProgress: null }),
 }));
 
 export function useGraphWebSocket() {
@@ -222,11 +368,37 @@ export function useGraphWebSocket() {
       useGraphStore.setState({ agentRunning: false, agentProgress: null });
       useGraphStore.getState().fetchGraph();
     });
+    // Scenario engine WebSocket listeners
+    const unsubScenarioProgress = wsClient.on("scenario_progress", (data) => {
+      const d = data as ScenarioProgress;
+      useGraphStore.setState({
+        scenarioLoading: true,
+        scenarioProgress: d,
+      });
+    });
+    const unsubScenarioComplete = wsClient.on("scenario_complete", (data) => {
+      const d = data as { scenario_id: number; status: string; error?: string };
+      if (d.status === "error") {
+        useGraphStore.setState({
+          scenarioLoading: false,
+          scenarioProgress: null,
+          error: d.error || "Scenario generation failed",
+        });
+      } else if (d.scenario_id > 0) {
+        // Fetch the full result
+        useGraphStore.getState().fetchScenario(d.scenario_id);
+        useGraphStore.getState().fetchScenarioHistory();
+      } else {
+        useGraphStore.setState({ scenarioLoading: false, scenarioProgress: null });
+      }
+    });
     return () => {
       unsub();
       unsubRegime();
       unsubProgress();
       unsubComplete();
+      unsubScenarioProgress();
+      unsubScenarioComplete();
     };
   }, []);
 }
