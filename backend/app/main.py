@@ -6,6 +6,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 import networkx as nx
 from fastapi import FastAPI
@@ -23,6 +24,7 @@ from app.graph_engine.topology import MVP_EDGES, MVP_NODES
 from app.causal_discovery.api.routes import router as causal_router
 from app.causal_discovery.models import create_hypertable_if_needed, create_node_values_index, seed_default_anchors
 from app.models.graph import Base, Edge, Node
+from app.models.scenarios import Scenario, ScenarioPrediction, ScenarioShock  # noqa: F401 — register with Base.metadata
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -119,6 +121,23 @@ async def lifespan(app: FastAPI):
         await seed_default_anchors(conn)
     await seed_graph_if_empty()
     logger.info("Graph loaded: %d nodes, %d edges", app_state.graph.number_of_nodes(), app_state.graph.number_of_edges())
+
+    # Clean up orphaned scenarios from crashed/restarted runs
+    try:
+        from app.models.scenarios import Scenario
+        async with async_session() as session:
+            from sqlalchemy import update
+            result = await session.execute(
+                update(Scenario)
+                .where(Scenario.status == "running")
+                .where(Scenario.created_at < datetime.utcnow() - timedelta(minutes=25))
+                .values(status="error", error="Orphaned — server restarted during generation")
+            )
+            if result.rowcount > 0:
+                logger.info("Cleaned up %d orphaned scenario(s)", result.rowcount)
+            await session.commit()
+    except Exception as e:
+        logger.warning("Failed to clean up orphaned scenarios: %s", e)
 
     # Start scheduler
     from app.data_pipeline.scheduler import setup_scheduler

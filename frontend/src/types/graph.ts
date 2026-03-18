@@ -137,14 +137,27 @@ export interface ScenarioEdgeSuggestion {
   reasoning: string;
 }
 
+export interface ScenarioPrediction {
+  prediction: string;
+  confidence: number;
+  time_window?: string;
+  ticker?: string;        // present for market-checkable predictions
+  direction?: "above" | "below";
+  threshold?: number;
+}
+
 export interface ScenarioBranch {
   title: string;
   probability: number; // 0-1
+  probability_reasoning?: string;
   narrative: string;
   causal_chain: string[];
+  structural_outcome?: string;
   shocks: ScenarioShock[];
   time_horizon: string; // "days" | "weeks" | "months"
   invalidation?: string;
+  key_assumption?: string;
+  specific_predictions?: ScenarioPrediction[];
   node_suggestions?: ScenarioNodeSuggestion[];
   edge_suggestions?: ScenarioEdgeSuggestion[];
 }
@@ -177,6 +190,7 @@ export interface QuickTrigger {
   headline: string;
   source: string;
   suggested_prompt: string;
+  vulnerability?: string;
 }
 
 export interface ScenarioProgress {

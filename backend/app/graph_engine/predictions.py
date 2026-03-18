@@ -87,3 +87,86 @@ async def resolve_expired_predictions(session: AsyncSession) -> int:
         await session.commit()
 
     return resolved_count
+
+
+async def resolve_scenario_predictions(session: AsyncSession) -> int:
+    """Resolve expired scenario predictions by checking against actual market data.
+
+    For market-related predictions (those with a ticker + threshold), fetches the
+    current price via yfinance and compares against the threshold.
+    Qualitative predictions (no ticker) are marked as 'unresolvable'.
+    """
+    import asyncio
+    from app.models.scenarios import ScenarioPrediction
+
+    now = datetime.utcnow()
+
+    result = await session.execute(
+        select(ScenarioPrediction).where(
+            ScenarioPrediction.resolved_at.is_(None),
+            ScenarioPrediction.expires_at.isnot(None),
+            ScenarioPrediction.expires_at <= now,
+        )
+    )
+    predictions = result.scalars().all()
+
+    if not predictions:
+        return 0
+
+    # Batch unique tickers to minimize yfinance calls
+    tickers_needed = set()
+    for pred in predictions:
+        if pred.ticker and pred.threshold_value is not None:
+            tickers_needed.add(pred.ticker)
+
+    # Fetch current prices for all needed tickers
+    ticker_prices: dict[str, float] = {}
+    if tickers_needed:
+        try:
+            import yfinance as yf
+
+            def _fetch_prices(tickers: list[str]) -> dict[str, float]:
+                prices = {}
+                for ticker in tickers:
+                    try:
+                        data = yf.download(ticker, period="1d", interval="1d", progress=False)
+                        if not data.empty:
+                            if hasattr(data.columns, "levels") and len(data.columns.levels) > 1:
+                                data.columns = data.columns.droplevel(1)
+                            prices[ticker] = float(data["Close"].iloc[-1])
+                    except Exception as e:
+                        logger.warning("Failed to fetch price for %s: %s", ticker, e)
+                return prices
+
+            ticker_prices = await asyncio.to_thread(_fetch_prices, list(tickers_needed))
+        except Exception as e:
+            logger.warning("Failed to fetch ticker prices for scenario resolution: %s", e)
+
+    resolved_count = 0
+    for pred in predictions:
+        if pred.ticker and pred.threshold_value is not None and pred.ticker in ticker_prices:
+            # Market-resolvable prediction
+            actual = ticker_prices[pred.ticker]
+            pred.actual_value = actual
+            pred.resolved_at = now
+            pred.resolution_type = "market_resolved"
+
+            if pred.threshold_direction == "above":
+                pred.hit = actual >= pred.threshold_value
+            elif pred.threshold_direction == "below":
+                pred.hit = actual <= pred.threshold_value
+            else:
+                pred.hit = None
+                pred.resolution_type = "unresolvable"
+        else:
+            # Qualitative prediction — can't auto-resolve
+            pred.resolved_at = now
+            pred.resolution_type = "unresolvable"
+            pred.hit = None
+
+        resolved_count += 1
+
+    if resolved_count > 0:
+        await session.commit()
+
+    return resolved_count

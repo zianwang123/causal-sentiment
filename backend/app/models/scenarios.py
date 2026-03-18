@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 
 from .graph import Base
@@ -36,6 +36,34 @@ class ScenarioShock(Base):
     reasoning = Column(Text, default="")
     original_impact = Column(Text, default="")  # free-form impact before mapping
     created_at = Column(DateTime, default=func.now())
+
+
+class ScenarioPrediction(Base):
+    """Individual predictions extracted from scenario branches for resolution tracking."""
+    __tablename__ = "scenario_predictions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=False)
+    branch_idx = Column(Integer, nullable=False)
+    branch_title = Column(String(256), default="")
+    prediction_text = Column(Text, nullable=False)  # raw event description
+    confidence = Column(Float, nullable=False)  # 0-1
+    time_window = Column(String(64), default="")  # raw string e.g. "1-2 weeks"
+    expires_at = Column(DateTime, nullable=True)  # parsed expiry (None if unparseable)
+    ticker = Column(String(32), nullable=True)  # extracted ticker if market-related
+    threshold_value = Column(Float, nullable=True)  # e.g. 120.0
+    threshold_direction = Column(String(8), nullable=True)  # "above" or "below"
+    resolution_type = Column(String(16), default="pending")  # pending|market_resolved|unresolvable
+    resolved_at = Column(DateTime, nullable=True)
+    actual_value = Column(Float, nullable=True)  # market price at resolution
+    hit = Column(Boolean, nullable=True)  # True=correct, False=wrong, None=unresolved
+    created_at = Column(DateTime, default=func.now())
+
+    __table_args__ = (
+        Index("ix_scenario_predictions_scenario_id", "scenario_id"),
+        Index("ix_scenario_predictions_pending", "resolved_at", "expires_at",
+              postgresql_where=Column("resolved_at").is_(None)),
+    )
 
 
 class NodeSuggestion(Base):

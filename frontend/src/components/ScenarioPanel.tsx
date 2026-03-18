@@ -376,15 +376,84 @@ function BranchCard({
           {/* Full narrative */}
           <p className="text-[11px] text-gray-300 mt-2 leading-relaxed">{branch.narrative}</p>
 
-          {/* Causal chain */}
+          {/* Probability reasoning */}
+          {branch.probability_reasoning && (
+            <div className="mt-1.5 text-[10px] text-gray-500 bg-gray-900/30 rounded px-2 py-1">
+              <span className="text-blue-400/70 font-medium">Why {Math.round(branch.probability * 100)}%:</span>{" "}
+              {branch.probability_reasoning}
+            </div>
+          )}
+
+          {/* Causal chain — with temporal/path/cross-domain styling */}
           {branch.causal_chain.length > 0 && (
             <div className="mt-2">
               <div className="text-[10px] text-gray-500 uppercase mb-1">Causal Chain</div>
               <div className="space-y-0.5">
-                {branch.causal_chain.map((step, i) => (
-                  <div key={i} className="text-[11px] text-gray-300 flex items-start gap-1">
-                    <span className="text-purple-400 flex-shrink-0">{i === 0 ? "\u25CF" : "\u2192"}</span>
-                    <span>{step}</span>
+                {branch.causal_chain.map((step, i) => {
+                  const isPath = /^PATH\s/i.test(step);
+                  const isTrigger = /^TRIGGER:/i.test(step);
+                  const isCrossDomain = /^CROSS-DOMAIN/i.test(step);
+                  const isTemporal = /^(IMMEDIATE|SHORT-TERM|MEDIUM-TERM|STRUCTURAL)\s/i.test(step) ||
+                                     /^->\s*(IMMEDIATE|SHORT-TERM|MEDIUM-TERM|STRUCTURAL)\s/i.test(step);
+                  return (
+                    <div key={i} className={`text-[11px] flex items-start gap-1 ${
+                      isPath ? "mt-1.5 text-purple-300 font-medium" :
+                      isTrigger ? "text-white font-medium" :
+                      isCrossDomain ? "mt-1 text-yellow-400 italic" :
+                      isTemporal ? "text-gray-300 pl-2" :
+                      "text-gray-300"
+                    }`}>
+                      <span className={`flex-shrink-0 ${
+                        isTrigger ? "text-red-400" :
+                        isPath ? "text-purple-400" :
+                        isCrossDomain ? "text-yellow-400" :
+                        "text-purple-400"
+                      }`}>
+                        {isTrigger ? "\u25CF" : isPath ? "\u25B6" : isCrossDomain ? "\u26A1" : "\u2192"}
+                      </span>
+                      <span>{step}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Structural outcome */}
+          {branch.structural_outcome && (
+            <div className="mt-2">
+              <div className="text-[10px] text-gray-500 uppercase mb-1">Structural Outcome (1-6m)</div>
+              <p className="text-[11px] text-orange-300/80 bg-orange-900/10 rounded px-2 py-1 leading-relaxed">
+                {branch.structural_outcome}
+              </p>
+            </div>
+          )}
+
+          {/* Predictions — market-checkable ones get ticker badge */}
+          {branch.specific_predictions && branch.specific_predictions.length > 0 && (
+            <div className="mt-2">
+              <div className="text-[10px] text-gray-500 uppercase mb-1">Predictions</div>
+              <div className="space-y-1">
+                {branch.specific_predictions.map((pred, i) => (
+                  <div key={i} className="flex items-start gap-2 bg-gray-900/50 rounded px-2 py-1">
+                    <span className={`text-[10px] font-bold rounded px-1 py-0.5 flex-shrink-0 ${
+                      pred.confidence >= 0.7 ? "bg-green-900/50 text-green-300" :
+                      pred.confidence >= 0.4 ? "bg-yellow-900/50 text-yellow-300" :
+                      "bg-gray-700/50 text-gray-400"
+                    }`}>
+                      {Math.round(pred.confidence * 100)}%
+                    </span>
+                    <div>
+                      {pred.ticker && (
+                        <span className="text-[10px] font-mono bg-cyan-900/30 text-cyan-300 rounded px-1 py-0.5 mr-1">
+                          {pred.ticker} {pred.direction} {pred.threshold}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-gray-300">{pred.prediction}</span>
+                      {pred.time_window && (
+                        <span className="text-[10px] text-gray-500 ml-1">({pred.time_window})</span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -397,9 +466,9 @@ function BranchCard({
               Shocks ({branch.shocks.length})
             </div>
             <div className="space-y-1">
-              {branch.shocks.map((shock) => (
+              {branch.shocks.map((shock, idx) => (
                 <ShockRow
-                  key={shock.node_id}
+                  key={`${shock.node_id}-${idx}`}
                   shock={shock}
                   editedValue={editedShocks[shock.node_id]}
                   onEdit={(v) => onShockEdit(shock.node_id, v)}
@@ -444,6 +513,11 @@ function BranchCard({
               </span>
             )}
           </div>
+          {branch.key_assumption && (
+            <div className="text-[10px] text-gray-500 mt-1">
+              <span className="text-yellow-500/70">Key assumption:</span> {branch.key_assumption}
+            </div>
+          )}
 
           {/* Apply button — applies shocks + evolves graph with suggestions */}
           <button

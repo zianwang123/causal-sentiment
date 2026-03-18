@@ -94,6 +94,88 @@ async def fetch_all_market_prices(
     return await asyncio.to_thread(_fetch_sync, tickers)
 
 
+def _fetch_historical_sync(ticker: str, start: str, end: str) -> dict:
+    """Synchronous yfinance historical fetch — returns summary stats, not raw bars."""
+    from datetime import date as date_type
+
+    try:
+        start_dt = date_type.fromisoformat(start)
+        end_dt = date_type.fromisoformat(end)
+    except ValueError:
+        return {"error": "Invalid date format — use YYYY-MM-DD"}
+
+    if (end_dt - start_dt).days > 366:
+        return {"error": "Max 1 year of data per request"}
+    if end_dt <= start_dt:
+        return {"error": "end_date must be after start_date"}
+
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            data = yf.download(ticker, start=start, end=end, interval="1d", progress=False)
+            if data.empty:
+                return {"error": f"No data available for {ticker} in {start} to {end}"}
+
+            # Handle multi-level columns from yfinance
+            if hasattr(data.columns, "levels") and len(data.columns.levels) > 1:
+                data.columns = data.columns.droplevel(1)
+
+            closes = data["Close"]
+            opens = data["Open"]
+            highs = data["High"]
+            lows = data["Low"]
+
+            period_open = float(opens.iloc[0])
+            period_close = float(closes.iloc[-1])
+            period_high = float(highs.max())
+            period_low = float(lows.min())
+            total_return_pct = ((period_close - period_open) / period_open) * 100 if period_open else 0.0
+
+            # Max drawdown from rolling peak
+            rolling_max = closes.cummax()
+            drawdown = (closes - rolling_max) / rolling_max
+            max_drawdown_pct = float(drawdown.min()) * 100
+
+            # Peak and trough dates
+            peak_date = str(closes.idxmax().date()) if len(closes) > 0 else ""
+            trough_date = str(closes.idxmin().date()) if len(closes) > 0 else ""
+
+            # Annualized volatility
+            daily_returns = closes.pct_change().dropna()
+            volatility_ann = float(daily_returns.std() * (252 ** 0.5) * 100) if len(daily_returns) > 1 else 0.0
+
+            return {
+                "ticker": ticker,
+                "start": start,
+                "end": end,
+                "trading_days": len(data),
+                "period_open": round(period_open, 4),
+                "period_close": round(period_close, 4),
+                "period_high": round(period_high, 4),
+                "period_low": round(period_low, 4),
+                "total_return_pct": round(total_return_pct, 2),
+                "max_drawdown_pct": round(max_drawdown_pct, 2),
+                "peak_date": peak_date,
+                "trough_date": trough_date,
+                "volatility_annualized_pct": round(volatility_ann, 2),
+            }
+        except Exception as e:
+            if attempt == max_attempts - 1:
+                logger.warning("Failed to fetch historical %s after %d attempts: %s", ticker, max_attempts, e)
+                return {"error": f"Failed to fetch {ticker}: {e}"}
+            delay = 1.0 * (2 ** attempt)
+            time.sleep(delay)
+
+    return {"error": f"Failed to fetch {ticker} after retries"}
+
+
+async def fetch_historical_prices_summary(
+    ticker: str, start_date: str, end_date: str
+) -> dict:
+    """Fetch historical prices and return summary stats."""
+    return await asyncio.to_thread(_fetch_historical_sync, ticker, start_date, end_date)
+
+
 async def fetch_market_prices_for_agent(tickers: list[str] | None = None) -> list[dict]:
     """Fetch market prices and return in agent-friendly format."""
     prices = await fetch_all_market_prices(tickers)

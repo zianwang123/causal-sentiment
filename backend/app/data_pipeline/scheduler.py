@@ -485,6 +485,21 @@ async def scheduled_prediction_resolution():
         logger.exception("Prediction resolution failed: %s", e)
 
 
+async def scheduled_scenario_prediction_resolution():
+    """Resolve expired scenario predictions by checking against market data."""
+    from app.db.connection import async_session
+    from app.graph_engine.predictions import resolve_scenario_predictions
+
+    logger.info("Scheduled scenario prediction resolution starting")
+    try:
+        async with async_session() as session:
+            count = await resolve_scenario_predictions(session)
+            if count > 0:
+                logger.info("Resolved %d expired scenario predictions", count)
+    except Exception as e:
+        logger.exception("Scenario prediction resolution failed: %s", e)
+
+
 def setup_scheduler() -> AsyncIOScheduler:
     """Configure all scheduled jobs."""
     from app.config import settings
@@ -551,6 +566,12 @@ def setup_scheduler() -> AsyncIOScheduler:
         scheduled_prediction_resolution,
         IntervalTrigger(hours=1),
         id="prediction_resolution",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_scenario_prediction_resolution,
+        IntervalTrigger(hours=1),
+        id="scenario_prediction_resolution",
         replace_existing=True,
     )
     return scheduler
