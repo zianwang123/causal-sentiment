@@ -442,12 +442,51 @@ PREVIEW_PROPAGATION = {
     },
 }
 
+# New: economic calendar for forward-looking catalyst awareness
+GET_ECONOMIC_CALENDAR = {
+    "name": "get_economic_calendar",
+    "description": "Get upcoming macro-economic events (FOMC meetings, CPI releases, NFP, "
+        "GDP, PCE, ISM) for the next N days. Use this to identify scheduled catalysts and "
+        "timing windows for scenario analysis — what events could accelerate or invalidate "
+        "a scenario within the time horizon.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "days_ahead": {
+                "type": "integer",
+                "description": "Number of days to look ahead (default 30, max 90)",
+            },
+        },
+        "required": [],
+    },
+}
+
+# New: options positioning summary for "what's priced in" analysis
+FETCH_OPTIONS_SUMMARY = {
+    "name": "fetch_options_summary",
+    "description": "Fetch options positioning data for a ticker: implied volatility "
+        "(OI-weighted), put/call ratio, highest open-interest strike levels, and IV term "
+        "structure (near vs. next month, contango/backwardation). Use this to assess what "
+        "the market has ALREADY priced in — high put/call ratio means fear is priced, "
+        "backwardated IV means near-term stress exceeds medium-term expectations.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "ticker": {
+                "type": "string",
+                "description": "Ticker symbol with liquid options (e.g., 'SPY', 'QQQ', 'IWM', 'HYG', 'GLD', 'USO', 'EEM', 'TLT')",
+            },
+        },
+        "required": ["ticker"],
+    },
+}
+
 # Per-phase tool lists for multi-agent scenario engine
 _NEWS_TOOLS = [t for t in AGENT_TOOLS if t["name"] in {"search_news", "fetch_market_prices"}]
 
-RESEARCHER_TOOLS = _NEWS_TOOLS + [SUBMIT_RESEARCH]
+RESEARCHER_TOOLS = _NEWS_TOOLS + [GET_ECONOMIC_CALENDAR, SUBMIT_RESEARCH]
 HISTORIAN_TOOLS = _NEWS_TOOLS + [FETCH_HISTORICAL_PRICES, SUBMIT_HISTORY]
-STRATEGIST_TOOLS = _NEWS_TOOLS + [SUBMIT_FREE_SCENARIOS]
+STRATEGIST_TOOLS = _NEWS_TOOLS + [GET_ECONOMIC_CALENDAR, FETCH_OPTIONS_SUMMARY, SUBMIT_FREE_SCENARIOS]
 MAPPER_TOOLS = [
     t for t in AGENT_TOOLS if t["name"] == "validate_consistency"
 ] + [GET_GRAPH_TOPOLOGY, PREVIEW_PROPAGATION, SUBMIT_SCENARIOS]

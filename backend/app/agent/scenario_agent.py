@@ -16,7 +16,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 
 import networkx as nx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +41,7 @@ from app.agent.scenario_schemas import (
     STRATEGIST_TOOLS,
 )
 from app.agent.tools import fetch_market_prices, search_news, validate_consistency
-from app.models.scenarios import NodeSuggestion, Scenario, ScenarioShock
+from app.models.scenarios import NodeSuggestion, Scenario, ScenarioPrediction, ScenarioShock
 
 logger = logging.getLogger(__name__)
 
@@ -352,6 +353,45 @@ def _build_topology_string(graph: nx.DiGraph) -> tuple[str, str, int, int]:
     )
 
 
+# ── Cross-branch coherence check ─────────────────────────────────────────
+
+
+def _check_branch_coherence(scenario_brief: dict) -> list[str]:
+    """Check cross-branch coherence — flag branches with very similar impact sets.
+
+    Returns a list of warning strings (empty if coherent).
+    """
+    warnings: list[str] = []
+    branches = scenario_brief.get("branches", [])
+
+    # Build word sets from free_form_impacts per branch
+    branch_words: list[set[str]] = []
+    for b in branches:
+        words: set[str] = set()
+        for impact in b.get("free_form_impacts", []):
+            if isinstance(impact, str):
+                words.update(re.findall(r"\w+", impact.lower()))
+        branch_words.append(words)
+
+    for i in range(len(branches)):
+        for j in range(i + 1, len(branches)):
+            wi, wj = branch_words[i], branch_words[j]
+            if not wi or not wj:
+                continue
+            intersection = wi & wj
+            union = wi | wj
+            jaccard = len(intersection) / len(union) if union else 0.0
+            if jaccard > 0.8:
+                title_i = branches[i].get("title", f"Branch {chr(65 + i)}")
+                title_j = branches[j].get("title", f"Branch {chr(65 + j)}")
+                warnings.append(
+                    f"'{title_i}' and '{title_j}' have very similar impact sets "
+                    f"(Jaccard={jaccard:.2f}). Consider differentiating them more."
+                )
+
+    return warnings
+
+
 # ── Sub-agent runner ──────────────────────────────────────────────────────
 
 
@@ -374,6 +414,9 @@ async def _run_sub_agent(
     """
     messages: list[dict] = [{"role": "user", "content": user_message}]
     submitted: dict | None = None
+    # Convergence detection: track recent tool calls to avoid redundant searches
+    _recent_calls: list[tuple[str, set[str]]] = []
+    _CONVERGENCE_TOOLS = {"search_news", "fetch_market_prices"}
 
     for local_round in range(max_rounds):
         global_round = global_round_offset + local_round
@@ -395,6 +438,29 @@ async def _run_sub_agent(
             if tc.name in _SUBMIT_TOOLS:
                 submitted = tc.input
                 result = json.dumps({"status": "accepted", "message": f"{tc.name} received."})
+            elif tc.name in _CONVERGENCE_TOOLS:
+                # Check for redundant searches (Jaccard > 0.7 on input words)
+                input_words = set(re.findall(r"\w+", json.dumps(tc.input).lower()))
+                is_redundant = False
+                for prev_name, prev_words in _recent_calls:
+                    if prev_name == tc.name and prev_words and input_words:
+                        intersection = input_words & prev_words
+                        union = input_words | prev_words
+                        if union and len(intersection) / len(union) > 0.7:
+                            is_redundant = True
+                            break
+                _recent_calls.append((tc.name, input_words))
+                if len(_recent_calls) > 8:
+                    _recent_calls.pop(0)
+
+                if is_redundant:
+                    result = json.dumps({
+                        "warning": "You've already searched for very similar terms. "
+                        "Synthesize what you have and proceed to your submission tool."
+                    })
+                    logger.info("[scenario:%s] Convergence nudge for %s", phase_name, tc.name)
+                else:
+                    result = await _execute_scenario_tool(tc.name, tc.input, session, graph)
             else:
                 result = await _execute_scenario_tool(tc.name, tc.input, session, graph)
 
@@ -522,6 +588,9 @@ async def run_scenario_extrapolation(
     trigger_type: str,
     session: AsyncSession,
     app_state,
+    parent_context: str | None = None,
+    parent_scenario_id: int | None = None,
+    parent_branch_idx: int | None = None,
 ) -> Scenario:
     """Run the multi-agent scenario extrapolation.
 
@@ -568,7 +637,11 @@ async def run_scenario_extrapolation(
             return scenario
 
     # Create scenario record
-    scenario = Scenario(trigger=trigger, trigger_type=trigger_type, status="running")
+    scenario = Scenario(
+        trigger=trigger, trigger_type=trigger_type, status="running",
+        parent_scenario_id=parent_scenario_id,
+        parent_branch_idx=parent_branch_idx,
+    )
     session.add(scenario)
     await session.commit()
 
@@ -576,8 +649,27 @@ async def run_scenario_extrapolation(
     submitted_result: dict | None = None
 
     try:
+        # ── Pre-fetch: current date + market snapshot for context ────
+        current_date = datetime.utcnow().strftime("%Y-%m-%d")
+        snapshot_text = f"## Current Date: {current_date}\n"
+        try:
+            snapshot_raw = await fetch_market_prices(tickers=["SPY", "^VIX", "CL=F", "DX-Y.NYB", "^TNX"])
+            snapshot_data = json.loads(snapshot_raw) if isinstance(snapshot_raw, str) else snapshot_raw
+            if isinstance(snapshot_data, dict):
+                snapshot_text += "\n## Current Market Context\n"
+                for ticker, data in snapshot_data.items():
+                    if isinstance(data, dict) and "close" in data:
+                        chg = data.get("change_pct", 0)
+                        chg5 = data.get("change_5d_pct", 0)
+                        snapshot_text += f"- {ticker}: {data['close']} ({chg:+.2f}% 1d, {chg5:+.2f}% 5d)\n"
+        except Exception as e:
+            logger.debug("[scenario] Market snapshot fetch failed (non-fatal): %s", e)
+            snapshot_text += "(Market data unavailable)\n"
+
         # ── Phase 1: Researcher ──────────────────────────────────────
-        phase1_content = PHASE1_NEWS_PROMPT.format(trigger=trigger)
+        phase1_content = f"{snapshot_text}\n{PHASE1_NEWS_PROMPT.format(trigger=trigger)}"
+        if parent_context:
+            phase1_content = f"## Parent Scenario Context (ASSUMED OUTCOME)\n\n{parent_context}\n\n---\n\n{phase1_content}"
         detected_domains = _classify_trigger_domains(trigger)
         for domain in detected_domains[:2]:
             supplement = _DOMAIN_SUPPLEMENTS.get(domain, "")
@@ -608,7 +700,7 @@ async def run_scenario_extrapolation(
         logger.info("[scenario] Phase 1 complete — research brief: %d chars", len(research_text))
 
         # ── Phase 2: Historian ───────────────────────────────────────
-        historian_input = f"{research_text}\n\n{PHASE2_HISTORY_PROMPT}"
+        historian_input = f"Current date: {current_date}\n\n{research_text}\n\n{PHASE2_HISTORY_PROMPT}"
 
         history_brief = await _run_sub_agent(
             system_prompt=HISTORIAN_SYSTEM_PROMPT,
@@ -630,8 +722,12 @@ async def run_scenario_extrapolation(
         logger.info("[scenario] Phase 2 complete — history brief: %d chars", len(history_text))
 
         # ── Phase 3: Strategist ──────────────────────────────────────
-        track_record = await _build_scenario_track_record(session)
-        strategist_input = f"{research_text}\n\n{history_text}"
+        try:
+            track_record = await _build_scenario_track_record(session)
+        except Exception as e:
+            logger.warning("[scenario] Track record query failed (non-fatal): %s", e)
+            track_record = ""
+        strategist_input = f"Current date: {current_date}\n\n{snapshot_text}\n\n{research_text}\n\n{history_text}"
         if track_record:
             strategist_input += f"\n\n{track_record}"
         strategist_input += f"\n\n{PHASE3_GENERATE_PROMPT}"
@@ -662,6 +758,11 @@ async def run_scenario_extrapolation(
             return scenario
 
         logger.info("[scenario] Phase 3 complete — %d branches", len(scenario_brief.get("branches", [])))
+
+        # ── Cross-branch coherence check ─────────────────────────────
+        coherence_warnings = _check_branch_coherence(scenario_brief)
+        for w in coherence_warnings:
+            logger.warning("[scenario] Coherence: %s", w)
 
         # ── Phase 4: Mapper (orchestrator) ───────────────────────────
         mapper_input = _build_mapper_input(scenario_brief, graph)
@@ -708,7 +809,15 @@ async def run_scenario_extrapolation(
             scenario.research_summary = submitted_result.get("research_summary", "")
             scenario.historical_parallels = submitted_result.get("historical_parallels", "")
             await _persist_scenario_details(scenario.id, submitted_result, session, graph)
-            await _extract_and_store_predictions(scenario.id, submitted_result, session)
+            # Extract predictions in a fresh session to avoid greenlet issues
+            # from the long-running agent session (connection may have gone stale)
+            try:
+                from app.db.connection import async_session as session_factory
+                async with session_factory() as pred_session:
+                    await _extract_and_store_predictions(scenario.id, submitted_result, pred_session)
+                    await pred_session.commit()
+            except Exception as e:
+                logger.warning("[scenario] Prediction extraction failed (non-fatal): %s", e)
         else:
             scenario.status = "completed"
             scenario.error = "No structured output produced — check tool call log"
@@ -818,6 +927,24 @@ async def _execute_scenario_tool(
             return json.dumps({"error": f"Failed to fetch historical prices: {e}"})
     elif tool_name == "preview_propagation":
         return _preview_propagation(tool_input.get("shocks", []), graph)
+    elif tool_name == "get_economic_calendar":
+        from app.data_pipeline.calendar import get_economic_calendar
+        days = min(tool_input.get("days_ahead", 30), 90)
+        try:
+            events = await get_economic_calendar(days)
+            return json.dumps({"events": events, "count": len(events)})
+        except Exception as e:
+            return json.dumps({"error": f"Failed to fetch economic calendar: {e}"})
+    elif tool_name == "fetch_options_summary":
+        from app.data_pipeline.market import fetch_options_summary
+        ticker = tool_input.get("ticker", "")
+        if not ticker:
+            return json.dumps({"error": "ticker is required"})
+        try:
+            result = await fetch_options_summary(ticker)
+            return json.dumps(result)
+        except Exception as e:
+            return json.dumps({"error": f"Failed to fetch options summary: {e}"})
     elif tool_name in _SUBMIT_TOOLS:
         return json.dumps({"status": "accepted"})
     else:
@@ -827,11 +954,10 @@ async def _execute_scenario_tool(
 def _preview_propagation(shocks: list[dict], graph: nx.DiGraph) -> str:
     """Preview cascade effects of proposed shocks through the graph.
 
-    Runs propagate_signal for each shock, merges impacts additively,
-    and returns the top 15 affected nodes. Same merge logic as
-    apply_scenario_branch in routes_scenario.py.
+    Uses the shared merge_multi_shock_impacts function with non-linear
+    interaction model (stress multiplier + sigmoid compression).
     """
-    from app.graph_engine.propagation import propagate_signal
+    from app.graph_engine.propagation import merge_multi_shock_impacts
     try:
         from app.graph_engine.regimes import detect_regime
         regime = detect_regime(graph)
@@ -839,40 +965,7 @@ def _preview_propagation(shocks: list[dict], graph: nx.DiGraph) -> str:
     except Exception:
         regime_val = None
 
-    shocked_ids = {s.get("node_id") for s in shocks if s.get("node_id")}
-    merged: dict[str, dict] = {}
-
-    for shock in shocks:
-        nid = shock.get("node_id", "")
-        shock_value = shock.get("shock_value", 0.0)
-        if not nid or nid not in graph:
-            continue
-
-        current = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
-        delta = shock_value - current
-        if abs(delta) < 0.001:
-            continue
-
-        prop_result = propagate_signal(graph, nid, delta, regime=regime_val)
-
-        for affected_nid, impact in prop_result.impacts.items():
-            if affected_nid in shocked_ids:
-                continue
-
-            if affected_nid not in merged:
-                merged[affected_nid] = {
-                    "total_impact": 0.0,
-                    "contributing_shocks": [],
-                    "hops": len(prop_result.paths.get(affected_nid, [])) - 1,
-                }
-
-            merged[affected_nid]["total_impact"] += impact
-            merged[affected_nid]["contributing_shocks"].append(nid)
-            new_hops = len(prop_result.paths.get(affected_nid, [])) - 1
-            if new_hops > 0:
-                merged[affected_nid]["hops"] = min(
-                    merged[affected_nid]["hops"], new_hops
-                )
+    merged, stress_multiplier = merge_multi_shock_impacts(shocks, graph, regime_val)
 
     # Sort by magnitude, take top 15
     sorted_impacts = sorted(merged.items(), key=lambda x: abs(x[1]["total_impact"]), reverse=True)[:15]
@@ -888,11 +981,19 @@ def _preview_propagation(shocks: list[dict], graph: nx.DiGraph) -> str:
             "hops": max(data["hops"], 1),
         })
 
-    return json.dumps({
+    result: dict = {
         "preview": preview,
         "total_affected": len(merged),
         "showing_top": len(preview),
-    })
+    }
+    if stress_multiplier > 1.0:
+        result["non_linear_note"] = (
+            f"Stress multiplier: {stress_multiplier:.2f} applied "
+            f"({len(shocks)} simultaneous shocks). "
+            f"Sigmoid compression active for impacts >0.8."
+        )
+
+    return json.dumps(result)
 
 
 def _get_graph_topology(graph: nx.DiGraph) -> str:
@@ -925,11 +1026,6 @@ def _get_graph_topology(graph: nx.DiGraph) -> str:
 
 
 # ── Prediction extraction & track record ──────────────────────────────
-
-import re
-from datetime import timedelta
-
-from app.models.scenarios import ScenarioPrediction
 
 # Mapping of common terms to yfinance tickers for market prediction parsing
 _MARKET_TERM_TICKERS: dict[str, str] = {
@@ -999,8 +1095,8 @@ def _parse_time_window(text: str, base_time: datetime) -> datetime | None:
 
     text = text.lower().strip()
 
-    # Hours: "24h", "48h", "24-72h"
-    m = re.search(r"(\d+)\s*-\s*(\d+)\s*h", text)
+    # Hours: "24h", "48h", "24-72h", "24-72 hours"
+    m = re.search(r"(\d+)\s*-\s*(\d+)\s*(?:h|hour)s?", text)
     if m:
         return base_time + timedelta(hours=int(m.group(2)))
     m = re.search(r"(\d+)\s*h(?:our)?s?", text)
@@ -1055,12 +1151,7 @@ def _parse_market_prediction(text: str) -> tuple[str | None, float | None, str |
     direction_word = direction_match.group(1)
     direction = "above" if direction_word in ("above", "over", "exceeds", "exceed", "rises above", "rise above", "breaks", "break") else "below"
 
-    # Find threshold value near the direction keyword
-    # Search in a window around the direction keyword
-    search_area = text_lower[max(0, direction_match.start() - 20):direction_match.end() + 40]
-    value_match = re.search(r"\$?\s*([\d,]+(?:\.\d+)?)\s*(?:per|/|%)?", search_area[len(search_area) - 40:] if len(search_area) > 40 else search_area[direction_match.end() - max(0, direction_match.start() - 20):])
-
-    # Simpler: just find a number after the direction word
+    # Find threshold value — just find a number after the direction word
     after_direction = text_lower[direction_match.end():]
     value_match = re.search(r"\$?\s*([\d,]+(?:\.\d+)?)", after_direction)
     if not value_match:
@@ -1148,33 +1239,46 @@ async def _build_scenario_track_record(session: AsyncSession) -> str:
     """Build a track record summary from resolved scenario predictions.
 
     Returns empty string if no resolved predictions exist yet (skip gracefully).
+    Uses a fresh session to avoid greenlet issues from the long-running agent session.
     """
-    from sqlalchemy import select, func as sa_func
+    from sqlalchemy import select
+    from app.db.connection import async_session as session_factory
 
-    result = await session.execute(
-        select(ScenarioPrediction).where(
-            ScenarioPrediction.resolution_type == "market_resolved",
-            ScenarioPrediction.hit.isnot(None),
+    async with session_factory() as fresh_session:
+        result = await fresh_session.execute(
+            select(ScenarioPrediction).where(
+                ScenarioPrediction.resolution_type == "market_resolved",
+                ScenarioPrediction.hit.isnot(None),
+            )
         )
-    )
-    resolved = result.scalars().all()
+        # Materialize all fields we need while session is open to avoid lazy-load greenlet errors
+        resolved = [
+            {
+                "hit": r.hit,
+                "confidence": r.confidence,
+                "prediction_text": r.prediction_text,
+                "actual_value": r.actual_value,
+                "resolved_at": r.resolved_at,
+            }
+            for r in result.scalars().all()
+        ]
 
     if not resolved:
         return ""
 
     total = len(resolved)
-    hits = sum(1 for p in resolved if p.hit is True)
+    hits = sum(1 for p in resolved if p["hit"] is True)
     hit_rate = hits / total if total > 0 else 0.0
 
     # Calibration by confidence bucket
     buckets: dict[str, list] = {"low (0-0.3)": [], "medium (0.3-0.6)": [], "high (0.6-1.0)": []}
     for p in resolved:
-        if p.confidence < 0.3:
-            buckets["low (0-0.3)"].append(p.hit)
-        elif p.confidence < 0.6:
-            buckets["medium (0.3-0.6)"].append(p.hit)
+        if p["confidence"] < 0.3:
+            buckets["low (0-0.3)"].append(p["hit"])
+        elif p["confidence"] < 0.6:
+            buckets["medium (0.3-0.6)"].append(p["hit"])
         else:
-            buckets["high (0.6-1.0)"].append(p.hit)
+            buckets["high (0.6-1.0)"].append(p["hit"])
 
     parts = [
         "## Your Scenario Prediction Track Record",
@@ -1200,13 +1304,13 @@ async def _build_scenario_track_record(session: AsyncSession) -> str:
             parts.append(f"  ⚠ You're UNDERCONFIDENT in low-confidence predictions — actual hit rate is {bucket_rate:.0%}")
 
     # Last 5 resolved predictions
-    recent = sorted(resolved, key=lambda p: p.resolved_at or datetime.min, reverse=True)[:5]
+    recent = sorted(resolved, key=lambda p: p["resolved_at"] or datetime.min, reverse=True)[:5]
     if recent:
         parts.append("")
         parts.append("### Recent resolved predictions:")
         for p in recent:
-            status = "HIT" if p.hit else "MISS"
-            parts.append(f"- [{status}] \"{p.prediction_text[:80]}\" (confidence: {p.confidence:.0%}, actual: {p.actual_value})")
+            status = "HIT" if p["hit"] else "MISS"
+            parts.append(f"- [{status}] \"{p['prediction_text'][:80]}\" (confidence: {p['confidence']:.0%}, actual: {p['actual_value']})")
 
     parts.append("")
     parts.append("Use this track record to calibrate your probability assignments and confidence levels. "
@@ -1249,18 +1353,33 @@ async def _persist_scenario_details(
             session.add(NodeSuggestion(
                 scenario_id=scenario_id,
                 branch_idx=branch_idx,
-                suggested_id=ns["suggested_id"],
-                suggested_label=ns["suggested_label"],
+                suggested_id=ns.get("suggested_id", ""),
+                suggested_label=ns.get("suggested_label", ""),
                 suggested_type=ns.get("suggested_type", "macro"),
                 description=ns.get("description", ""),
                 reasoning=ns.get("reasoning", ""),
             ))
 
+        # Collect suggested node IDs from this branch so edge suggestions
+        # can reference them (not just existing graph nodes).
+        suggested_node_ids = {
+            ns.get("suggested_id", "")
+            for ns in branch.get("node_suggestions", [])
+            if ns.get("suggested_id")
+        }
+        valid_node_ids = graph_node_ids | suggested_node_ids
+
         for es in branch.get("edge_suggestions", []):
             src = es.get("source_id", "")
             tgt = es.get("target_id", "")
+            if src not in valid_node_ids or tgt not in valid_node_ids:
+                logger.info("Skipping edge suggestion %s -> %s (node not in graph or suggestions)", src, tgt)
+                continue
+            # Only persist to DB if both endpoints are real graph nodes
+            # (FK constraint on EdgeSuggestion). Edges referencing suggested
+            # nodes are still preserved in scenarios_json for frontend display.
             if src not in graph_node_ids or tgt not in graph_node_ids:
-                logger.info("Skipping edge suggestion %s -> %s (node not in graph)", src, tgt)
+                logger.info("Edge suggestion %s -> %s references suggested node — kept in JSON only", src, tgt)
                 continue
             from app.models.observations import EdgeSuggestion
             session.add(EdgeSuggestion(
@@ -1340,44 +1459,129 @@ def _broadcast_scenario_complete(scenario: Scenario) -> None:
         logger.debug("Failed to broadcast scenario complete: %s", e)
 
 
-# ── Quick triggers (unchanged) ────────────────────────────────────────
+# ── Quick triggers ────────────────────────────────────────────────────
+
+# 12 domain-aligned queries covering the full macro-analyst spectrum.
+# Includes domains beyond the graph (engine suggests new nodes for gaps).
+_QUICK_TRIGGER_QUERIES = [
+    "geopolitics conflict war sanctions military escalation",
+    "central banks monetary policy rate decision FOMC ECB BOJ",
+    "tariffs trade war supply chain reshoring sanctions",
+    "AI disruption technology cyber attack outage systemic",
+    "energy crisis oil gas climate transition renewable",
+    "bank failure credit crisis contagion default bankruptcy",
+    "pandemic outbreak virus health emergency supply chain",
+    "labor shortage strike immigration wage automation",
+    "government debt fiscal deficit downgrade sovereign crisis",
+    "housing market mortgage commercial real estate crisis",
+    "China economy emerging markets currency crisis capital flight",
+    "food prices agriculture drought famine water crisis",
+]
 
 
 async def _auto_pick_trigger(graph: nx.DiGraph) -> str:
-    """Auto-pick the most scenario-worthy event from current news."""
+    """Auto-pick a scenario-worthy event from current news.
+
+    Randomly selects from the LLM's top 5 triggers to ensure topic diversity
+    across multiple auto-generated scenarios.
+    """
+    import random
     try:
         triggers = await generate_quick_triggers(graph)
         if triggers:
-            return triggers[0].get("suggested_prompt", triggers[0].get("headline", ""))
+            pick = random.choice(triggers[:5])
+            return pick.get("suggested_prompt", pick.get("headline", ""))
     except Exception as e:
         logger.warning("Auto-pick trigger failed: %s", e)
     return ""
 
 
-async def generate_quick_triggers(graph: nx.DiGraph) -> list[dict]:
-    """Scan current RSS headlines and pick 2-3 scenario-worthy events."""
+async def _fetch_recent_trigger_topics() -> str:
+    """Fetch recent scenario triggers to avoid topic repetition."""
     try:
-        news_result = await search_news(query="markets economy geopolitics", max_results=20)
-        news_data = json.loads(news_result)
-        articles = news_data.get("articles", [])
-        if not articles:
+        from app.db.connection import async_session as session_factory
+        from sqlalchemy import select
+
+        async with session_factory() as session:
+            result = await session.execute(
+                select(Scenario.trigger, Scenario.created_at)
+                .where(Scenario.status.in_(["completed", "running"]))
+                .order_by(Scenario.created_at.desc())
+                .limit(5)
+            )
+            recent = result.all()
+            if not recent:
+                return ""
+
+            lines = []
+            for trigger, created_at in recent:
+                date_str = created_at.strftime("%b %d") if created_at else "?"
+                lines.append(f'- "{trigger[:80]}" ({date_str})')
+            return "\n".join(lines)
+    except Exception as e:
+        logger.debug("Failed to fetch recent triggers (non-fatal): %s", e)
+        return ""
+
+
+async def generate_quick_triggers(graph: nx.DiGraph) -> list[dict]:
+    """Scan current news across 12 domains and pick 5 scenario-worthy events.
+
+    Uses diverse queries to avoid topic concentration, then lets the LLM
+    rank by structural scenario potential with a diversity mandate.
+    """
+    try:
+        # Fetch news from all 12 domain queries concurrently (3 articles each)
+        fetch_tasks = [
+            search_news(query=q, max_results=3)
+            for q in _QUICK_TRIGGER_QUERIES
+        ]
+        results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+        # Collect and deduplicate articles
+        seen_titles: set[str] = set()
+        all_articles: list[dict] = []
+        for r in results:
+            if isinstance(r, Exception):
+                continue
+            try:
+                data = json.loads(r) if isinstance(r, str) else r
+                for a in data.get("articles", []):
+                    title = a.get("title", "")
+                    dedup_key = title[:50].lower().strip()
+                    if dedup_key and dedup_key not in seen_titles:
+                        seen_titles.add(dedup_key)
+                        all_articles.append(a)
+            except (json.JSONDecodeError, AttributeError):
+                continue
+
+        if not all_articles:
             return []
 
         headlines_text = "\n".join(
             f"- [{a.get('source', '?')}] {a.get('title', '')}"
-            for a in articles[:20]
+            for a in all_articles[:40]  # Cap at 40 to stay within prompt limits
         )
 
+        # Fetch recent topics to inject as avoidance list
+        recent_topics = await _fetch_recent_trigger_topics()
+
+        prompt_text = QUICK_TRIGGERS_PROMPT.format(
+            headlines=headlines_text,
+            recent_topics=recent_topics or "(none)",
+        )
+
+        logger.info("[quick_triggers] Calling simple_completion with %d headlines from %d domains",
+                     min(len(all_articles), 40), len(_QUICK_TRIGGER_QUERIES))
         response_text = await simple_completion(
             system="You are a financial news analyst. Return ONLY valid JSON, no markdown.",
-            user_message=QUICK_TRIGGERS_PROMPT.format(headlines=headlines_text),
+            user_message=prompt_text,
         )
+        logger.info("[quick_triggers] LLM response (%d chars): %s", len(response_text), response_text[:300])
 
         response_text = response_text.strip()
         # Strip markdown code fences (Claude often wraps JSON in ```json...```)
         if response_text.startswith("```"):
             lines = response_text.split("\n")
-            # Remove first line (```json) and last line (```)
             start = 1
             end = len(lines) - 1 if lines[-1].strip().startswith("```") else len(lines)
             response_text = "\n".join(lines[start:end]).strip()
@@ -1397,9 +1601,10 @@ async def generate_quick_triggers(graph: nx.DiGraph) -> list[dict]:
                 "headline": t.get("headline", "")[:80],
                 "source": t.get("source", ""),
                 "suggested_prompt": t.get("suggested_prompt", ""),
+                "vulnerability": t.get("vulnerability", ""),
             }
-            for t in triggers[:3]
+            for t in triggers[:5]
         ]
     except Exception as e:
-        logger.warning("Quick trigger generation failed: %s", e)
+        logger.exception("Quick trigger generation failed: %s", e)
         return []

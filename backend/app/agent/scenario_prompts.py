@@ -771,7 +771,48 @@ to see the cascade effects through the graph. Check:
 (This may mean you need to add a direct shock to that node instead of relying on cascade.)
 
 Adjust shock values if the propagation doesn't match the expected narrative, then call \
-`submit_scenarios`.\
+`submit_scenarios`.
+
+## When to Use Existing Node vs. Suggest New
+
+- **USE EXISTING NODE** when the impact maps to a concept already represented, even if \
+the label doesn't match perfectly. Example: "European banking stress" maps to existing \
+`hy_credit_spread` or `financials_sector`, NOT a new "eu_banks" node.
+- **SUGGEST NEW NODE** only when the impact represents a concept with NO semantic overlap \
+with any existing node. Example: "semiconductor supply chain disruption" may warrant a \
+new node if no existing node captures supply chain dynamics.
+- The graph already has 52 nodes covering most macro concepts. Err toward mapping to \
+existing nodes rather than suggesting new ones. Over-suggesting dilutes the graph.
+
+## Mapping Examples
+
+GOOD: "Oil spikes to $120 as 2M bpd disrupted" → wti_crude: +0.8 \
+(calibrated: 2019 Abqaiq attack ~1M bpd disruption = ~+0.4, so 2M bpd offline = ~+0.8)
+BAD:  "Oil spikes" → wti_crude: +1.0 (no calibration, extreme value without justification)
+
+GOOD: "Flight to safety into Treasuries" → us_10y_yield: -0.4 \
+(yields DROP when bonds rally — be careful about directionality for rate/yield nodes)
+BAD:  "Treasuries rally" → us_10y_yield: +0.5 (WRONG DIRECTION — yields fall when bonds rally)
+
+GOOD: "Credit spreads widen on contagion fear" → hy_credit_spread: +0.5 \
+(positive = wider spreads = more stress for spread nodes)
+BAD:  "Credit stress increases" → hy_credit_spread: -0.5 (wrong direction for spread nodes)
+
+GOOD: "Dollar surges as safe haven" → dxy_index: +0.4, eurusd: -0.3 \
+(DXY up = dollar strong, EURUSD down = euro weak vs dollar — consistent)
+BAD:  "Dollar surges" → dxy_index: +0.4, eurusd: +0.3 (contradictory — if dollar is strong, EUR/USD falls)
+
+## Node-Specific Directionality Notes
+
+- **Spread nodes** (hy_credit_spread, ig_credit_spread): POSITIVE = wider spreads = MORE stress
+- **Yield nodes** (us_10y_yield, us_2y_yield): POSITIVE = higher yields = bonds selling off
+- **VIX/MOVE/SKEW**: POSITIVE = more fear/volatility. VIX = equity vol, MOVE = bond vol, \
+SKEW = tail risk. Use the specific one matching the impact mechanism.
+- **Currency nodes**: dxy_index is USD strength (positive = strong dollar). Individual pairs \
+(eurusd, usdjpy) may move differently from the index — be precise.
+- **Commodity nodes**: POSITIVE = higher prices. For risk framing, higher oil is bullish \
+for producers but bearish for consumers/inflation — map to the node that captures the \
+PRIMARY mechanism in your scenario.\
 """
 
 PHASE1_NEWS_PROMPT = """\
@@ -979,21 +1020,31 @@ QUICK_TRIGGERS_PROMPT = """\
 You are a strategic foresight analyst scanning today's news for structural triggers — \
 events that interact with existing system vulnerabilities in non-obvious ways.
 
-Here are today's headlines:
+Here are today's headlines (from diverse domains):
 {headlines}
 
-Pick the 2-3 events with the highest STRATEGIC SCENARIO POTENTIAL. Not just big news — \
-events where the second and third-order effects could surprise the market. Prefer:
+## Recently Generated Scenarios (AVOID repeating these topics):
+{recent_topics}
+
+Pick **5** events with the highest STRATEGIC SCENARIO POTENTIAL. Not just big news — \
+events where the second and third-order effects could surprise the market.
+
+## CRITICAL: MAXIMIZE DIVERSITY
+- Do NOT pick multiple events from the same story, domain, or theme.
+- If 3 headlines are about tariffs, pick at most ONE tariff-related trigger.
+- Spread your picks across different macro domains: geopolitical, monetary, trade, \
+technology, energy, financial stability, health, labor, sovereign, housing, EM, commodities.
+- The value of this list is in BREADTH — a portfolio manager wants to see 5 DIFFERENT \
+risk vectors, not 5 variations on the same theme.
+- AVOID topics already covered in recent scenarios (listed above).
+
+## Selection Criteria
+Prefer:
 - Events that interact with known structural vulnerabilities (concentration risk, leverage, \
 policy constraints, demographic shifts)
 - Events where the consensus market reaction might be wrong or incomplete
 - Events that connect multiple domains in ways most analysts wouldn't immediately see
 
-For each event, think about which STRUCTURAL VULNERABILITIES it could interact with:
-- Are any major asset classes at extreme valuations or positioning?
-- Is there hidden leverage or concentration risk that this event could expose?
-- Is a widely held market assumption being tested?
-- Could this event trigger a cross-domain cascade that most analysts would miss?
 The best triggers are not the biggest headlines — they are the headlines that interact \
 with a pre-existing fragility in non-obvious ways.
 

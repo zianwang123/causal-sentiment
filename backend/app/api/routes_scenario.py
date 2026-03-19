@@ -39,6 +39,8 @@ class ScenarioBranchOut(BaseModel):
     causal_chain: list[str]
     time_horizon: str
     invalidation: str | None = None
+    key_assumption: str | None = None
+    specific_predictions: list[dict] | None = None
     shocks: list[dict]
     node_suggestions: list[dict] | None = None
     edge_suggestions: list[dict] | None = None
@@ -57,6 +59,8 @@ class ScenarioOut(BaseModel):
     error: str | None
     created_at: str
     finished_at: str | None
+    parent_scenario_id: int | None = None
+    parent_branch_idx: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -68,8 +72,19 @@ class ScenarioSummaryOut(BaseModel):
     status: str
     branch_count: int
     created_at: str
+    parent_scenario_id: int | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ChainRequest(BaseModel):
+    branch_idx: int
+    follow_up_trigger: str
+
+
+class ChainResponse(BaseModel):
+    child_scenario_id: int
+    status: str
 
 
 class ApplyBranchRequest(BaseModel):
@@ -98,6 +113,7 @@ class QuickTriggerOut(BaseModel):
     headline: str
     source: str
     suggested_prompt: str
+    vulnerability: str | None = None
 
 
 # ── Endpoints ───────────────────────────────────────────────────
@@ -138,6 +154,7 @@ async def list_scenarios(
             status=s.status,
             branch_count=len(s.scenarios_json.get("branches", [])) if s.scenarios_json else 0,
             created_at=s.created_at.isoformat() if s.created_at else "",
+            parent_scenario_id=s.parent_scenario_id,
         )
         for s in scenarios
     ]
@@ -192,7 +209,6 @@ async def apply_scenario_branch(
 ):
     """Apply a scenario branch to the graph (multi-shock simulate, read-only)."""
     from app.main import app_state
-    from app.graph_engine.propagation import propagate_signal
     from app.graph_engine.regimes import detect_regime
 
     result = await session.execute(
@@ -230,40 +246,11 @@ async def apply_scenario_branch(
         if node_id in graph:
             shocks.append({"node_id": node_id, "shock_value": shock_value})
 
-    # Multi-shock simulate: propagate each shock, merge impacts
-    merged_impacts: dict[str, dict] = {}  # node_id -> {total_impact, contributing_shocks, hops}
-
-    for shock in shocks:
-        nid = shock["node_id"]
-        current = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
-        delta = shock["shock_value"] - current
-
-        if abs(delta) < 0.001:
-            continue
-
-        prop_result = propagate_signal(
-            graph, nid, delta, regime=regime.state.value,
-        )
-
-        for affected_nid, impact in prop_result.impacts.items():
-            if affected_nid in [s["node_id"] for s in shocks]:
-                continue  # Skip directly shocked nodes from showing as propagation impacts
-
-            if affected_nid not in merged_impacts:
-                merged_impacts[affected_nid] = {
-                    "total_impact": 0.0,
-                    "contributing_shocks": [],
-                    "hops": len(prop_result.paths.get(affected_nid, [])) - 1,
-                }
-
-            merged_impacts[affected_nid]["total_impact"] += impact
-            merged_impacts[affected_nid]["contributing_shocks"].append(nid)
-            # Keep minimum hops
-            new_hops = len(prop_result.paths.get(affected_nid, [])) - 1
-            if new_hops > 0:
-                merged_impacts[affected_nid]["hops"] = min(
-                    merged_impacts[affected_nid]["hops"], new_hops
-                )
+    # Multi-shock simulate: propagate each shock, merge with non-linear interaction
+    from app.graph_engine.propagation import merge_multi_shock_impacts
+    merged_impacts, _stress_mult = merge_multi_shock_impacts(
+        shocks, graph, regime_val=regime.state.value,
+    )
 
     # Sort by magnitude
     sorted_impacts = sorted(
@@ -317,6 +304,103 @@ async def get_hypothetical_state():
         "hypothetical_edge_keys": [list(k) for k in app_state.hypothetical_edge_keys],
         "count": len(app_state.hypothetical_node_ids),
     }
+
+
+# ── Scenario Chaining ──────────────────────────────────────────
+
+
+@router.post("/{scenario_id}/chain", response_model=ChainResponse)
+async def chain_scenario(
+    scenario_id: int,
+    request: ChainRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Chain a follow-up scenario from a parent branch outcome."""
+    import json as json_mod
+    from app.main import app_state
+    from app.agent.scenario_agent import run_scenario_extrapolation
+    from app.db.connection import async_session as session_factory
+
+    result = await session.execute(
+        select(Scenario).where(Scenario.id == scenario_id)
+    )
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
+    if not parent.scenarios_json or "branches" not in parent.scenarios_json:
+        raise HTTPException(status_code=400, detail="Parent scenario has no branches")
+
+    branches = parent.scenarios_json["branches"]
+    if request.branch_idx >= len(branches):
+        raise HTTPException(status_code=400, detail=f"Branch {request.branch_idx} does not exist")
+
+    branch = branches[request.branch_idx]
+
+    # Build parent context for the child scenario
+    shocks_summary = json_mod.dumps(
+        [{"node_id": s.get("node_id"), "shock_value": s.get("shock_value")}
+         for s in branch.get("shocks", [])[:10]],
+    )
+    parent_context = (
+        f"The following scenario has ALREADY PLAYED OUT (treat as given):\n\n"
+        f"**Parent trigger:** {parent.trigger}\n"
+        f"**Branch that materialized:** {branch.get('title', 'Unknown')} "
+        f"({branch.get('probability', 0) * 100:.0f}% probability)\n"
+        f"**Narrative:** {branch.get('narrative', '')}\n"
+        f"**Shocks applied:** {shocks_summary}\n"
+        f"**Structural outcome:** {branch.get('structural_outcome', 'N/A')}\n\n"
+        f"Now analyze the FOLLOW-UP trigger in this context: \"{request.follow_up_trigger}\""
+    )
+
+    # Create child scenario in background
+    async def _run_child():
+        async with session_factory() as child_session:
+            await run_scenario_extrapolation(
+                trigger=request.follow_up_trigger,
+                trigger_type="chain",
+                session=child_session,
+                app_state=app_state,
+                parent_context=parent_context,
+                parent_scenario_id=scenario_id,
+                parent_branch_idx=request.branch_idx,
+            )
+
+    # Create a temporary scenario record to return the ID immediately
+    child_scenario = Scenario(
+        trigger=request.follow_up_trigger,
+        trigger_type="chain",
+        status="running",
+        parent_scenario_id=scenario_id,
+        parent_branch_idx=request.branch_idx,
+    )
+    session.add(child_scenario)
+    await session.commit()
+    child_id = child_scenario.id
+
+    # Launch in background — overwrites the placeholder record
+    async def _run_child_with_id():
+        async with session_factory() as child_session:
+            # Delete placeholder and let run_scenario_extrapolation create its own
+            from sqlalchemy import delete
+            await child_session.execute(
+                delete(Scenario).where(Scenario.id == child_id)
+            )
+            await child_session.commit()
+
+        async with session_factory() as child_session:
+            await run_scenario_extrapolation(
+                trigger=request.follow_up_trigger,
+                trigger_type="chain",
+                session=child_session,
+                app_state=app_state,
+                parent_context=parent_context,
+                parent_scenario_id=scenario_id,
+                parent_branch_idx=request.branch_idx,
+            )
+
+    asyncio.create_task(_run_child_with_id())
+
+    return ChainResponse(child_scenario_id=child_id, status="running")
 
 
 # ── Evolve Graph ────────────────────────────────────────────────
@@ -483,6 +567,8 @@ def _extract_branches(scenario: Scenario) -> list[ScenarioBranchOut]:
             causal_chain=b.get("causal_chain", []),
             time_horizon=b.get("time_horizon", "weeks"),
             invalidation=b.get("invalidation"),
+            key_assumption=b.get("key_assumption"),
+            specific_predictions=b.get("specific_predictions"),
             shocks=b.get("shocks", []),
             node_suggestions=b.get("node_suggestions"),
             edge_suggestions=b.get("edge_suggestions"),
@@ -505,7 +591,7 @@ async def _run_scenario_background(trigger: str, trigger_type: str, app_state):
                     session=session,
                     app_state=app_state,
                 ),
-                timeout=600.0,  # 10-minute timeout
+                timeout=1200.0,  # 20-minute timeout (expanded prompts + 22 rounds)
             )
             # Broadcast completion (scenario_agent already broadcasts, but ensure)
             await manager.broadcast({
@@ -519,6 +605,23 @@ async def _run_scenario_background(trigger: str, trigger_type: str, app_state):
             })
     except Exception as e:
         logger.exception("Background scenario failed: %s", e)
+        # Update DB status so it doesn't stay as "running" forever
+        try:
+            async with async_session() as err_session:
+                from sqlalchemy import update as sql_update
+                await err_session.execute(
+                    sql_update(Scenario)
+                    .where(Scenario.status == "running")
+                    .where(Scenario.trigger == trigger)
+                    .values(
+                        status="error",
+                        error=str(e)[:2000],
+                        finished_at=datetime.utcnow(),
+                    )
+                )
+                await err_session.commit()
+        except Exception as db_err:
+            logger.error("Failed to update scenario status on error: %s", db_err)
         try:
             await manager.broadcast({
                 "type": "scenario_complete",

@@ -175,6 +175,8 @@ export interface ScenarioResult {
   error: string | null;
   created_at: string;
   finished_at: string | null;
+  parent_scenario_id?: number | null;
+  parent_branch_idx?: number | null;
 }
 
 export interface ScenarioSummary {
@@ -184,6 +186,23 @@ export interface ScenarioSummary {
   status: string;
   branch_count: number;
   created_at: string;
+  parent_scenario_id?: number | null;
+}
+
+// Scenario comparison
+export interface CompareBranchEntry {
+  scenarioId: number;
+  branchIdx: number;
+  title: string;
+  shocks: ScenarioShock[];
+}
+
+export interface CompareNodeRow {
+  nodeId: string;
+  label: string;
+  valA: number | undefined;
+  valB: number | undefined;
+  color: "green" | "red" | "blue" | "gray"; // both+, both-, opposite, unique
 }
 
 export interface QuickTrigger {

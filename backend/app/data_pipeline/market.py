@@ -176,6 +176,86 @@ async def fetch_historical_prices_summary(
     return await asyncio.to_thread(_fetch_historical_sync, ticker, start_date, end_date)
 
 
+def _fetch_options_summary_sync(ticker: str) -> dict:
+    """Synchronous yfinance options fetch — returns positioning summary."""
+    try:
+        t = yf.Ticker(ticker)
+        expirations = t.options
+        if not expirations:
+            return {"ticker": ticker, "error": f"No options data available for {ticker}"}
+
+        near_exp = expirations[0]
+        chain_near = t.option_chain(near_exp)
+        calls = chain_near.calls
+        puts = chain_near.puts
+
+        # Put/Call ratio (volume-based)
+        call_vol = float(calls["volume"].sum()) if "volume" in calls.columns and not calls["volume"].isna().all() else 0
+        put_vol = float(puts["volume"].sum()) if "volume" in puts.columns and not puts["volume"].isna().all() else 0
+        pc_ratio = round(put_vol / call_vol, 3) if call_vol > 0 else None
+
+        # Implied volatility (weighted average by open interest)
+        call_iv = None
+        put_iv = None
+        if "impliedVolatility" in calls.columns and "openInterest" in calls.columns:
+            c_oi = calls["openInterest"].fillna(0)
+            if c_oi.sum() > 0:
+                call_iv = round(float((calls["impliedVolatility"] * c_oi).sum() / c_oi.sum()), 4)
+        if "impliedVolatility" in puts.columns and "openInterest" in puts.columns:
+            p_oi = puts["openInterest"].fillna(0)
+            if p_oi.sum() > 0:
+                put_iv = round(float((puts["impliedVolatility"] * p_oi).sum() / p_oi.sum()), 4)
+
+        # Key strike levels (highest OI)
+        top_call_strike = None
+        top_put_strike = None
+        if not calls.empty and "openInterest" in calls.columns:
+            valid_calls = calls.dropna(subset=["openInterest"])
+            if not valid_calls.empty:
+                top_call_strike = float(valid_calls.loc[valid_calls["openInterest"].idxmax(), "strike"])
+        if not puts.empty and "openInterest" in puts.columns:
+            valid_puts = puts.dropna(subset=["openInterest"])
+            if not valid_puts.empty:
+                top_put_strike = float(valid_puts.loc[valid_puts["openInterest"].idxmax(), "strike"])
+
+        # IV term structure (near vs. next month)
+        iv_term = None
+        if len(expirations) >= 2:
+            try:
+                chain_next = t.option_chain(expirations[1])
+                near_iv_avg = float(calls["impliedVolatility"].mean()) if not calls.empty else None
+                next_iv_avg = float(chain_next.calls["impliedVolatility"].mean()) if not chain_next.calls.empty else None
+                if near_iv_avg and next_iv_avg:
+                    iv_term = {
+                        "near_month_iv": round(near_iv_avg, 4),
+                        "near_expiry": near_exp,
+                        "next_month_iv": round(next_iv_avg, 4),
+                        "next_expiry": expirations[1],
+                        "contango": next_iv_avg > near_iv_avg,
+                        "term_slope": round(next_iv_avg - near_iv_avg, 4),
+                    }
+            except Exception:
+                pass  # Term structure is a bonus, not critical
+
+        return {
+            "ticker": ticker,
+            "near_expiry": near_exp,
+            "put_call_ratio": pc_ratio,
+            "avg_call_iv": call_iv,
+            "avg_put_iv": put_iv,
+            "highest_oi_call_strike": top_call_strike,
+            "highest_oi_put_strike": top_put_strike,
+            "iv_term_structure": iv_term,
+        }
+    except Exception as e:
+        return {"ticker": ticker, "error": f"Failed to fetch options: {e}"}
+
+
+async def fetch_options_summary(ticker: str) -> dict:
+    """Fetch options positioning summary for a ticker (IV, put/call ratio, key strikes)."""
+    return await asyncio.to_thread(_fetch_options_summary_sync, ticker)
+
+
 async def fetch_market_prices_for_agent(tickers: list[str] | None = None) -> list[dict]:
     """Fetch market prices and return in agent-friendly format."""
     prices = await fetch_all_market_prices(tickers)

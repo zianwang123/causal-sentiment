@@ -21,6 +21,8 @@ class Scenario(Base):
     selected_branch_idx = Column(Integer, nullable=True)
     simulation_result = Column(JSONB, nullable=True)
     error = Column(Text, nullable=True)
+    parent_scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=True)
+    parent_branch_idx = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=func.now())
     finished_at = Column(DateTime, nullable=True)
 

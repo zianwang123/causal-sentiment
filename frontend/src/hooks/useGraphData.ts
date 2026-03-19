@@ -5,6 +5,7 @@ import { create } from "zustand";
 import type {
   AgentRun,
   AnomalyInfo,
+  CompareBranchEntry,
   ForceGraphLink,
   ForceGraphNode,
   GraphData,
@@ -13,6 +14,7 @@ import type {
   RegimeInfo,
   ScenarioProgress,
   ScenarioResult,
+  ScenarioShock,
   ScenarioSummary,
   SimulationResult,
 } from "@/types/graph";
@@ -78,6 +80,15 @@ interface GraphStore {
   resetEvolve: () => Promise<void>;
   hypotheticalNodeIds: string[];
   clearScenario: () => void;
+  chainScenario: (parentId: number, branchIdx: number, followUpTrigger: string) => Promise<void>;
+
+  // Scenario comparison
+  scenarioCompareMode: boolean;
+  scenarioCompareBranches: CompareBranchEntry[];
+  toggleCompareMode: () => void;
+  addCompareBranch: (scenarioId: number, branchIdx: number, title: string, shocks: ScenarioShock[]) => void;
+  removeCompareBranch: (scenarioId: number, branchIdx: number) => void;
+  clearCompareBranches: () => void;
 }
 
 export const useGraphStore = create<GraphStore>((set, get) => ({
@@ -103,6 +114,10 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   scenarioHistory: [],
   quickTriggers: [],
   hypotheticalNodeIds: [],
+
+  // Scenario comparison
+  scenarioCompareMode: false,
+  scenarioCompareBranches: [],
 
   fetchSnapshot: async (timestamp: string) => {
     try {
@@ -335,6 +350,45 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   },
 
   clearScenario: () => set({ scenarioResult: null, scenarioLoading: false, scenarioProgress: null }),
+
+  // Scenario chaining
+  chainScenario: async (parentId: number, branchIdx: number, followUpTrigger: string) => {
+    try {
+      set({ scenarioLoading: true, scenarioProgress: null });
+      const res = await fetch(`${API_URL}/api/scenarios/${parentId}/chain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ branch_idx: branchIdx, follow_up_trigger: followUpTrigger }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Result arrives via WebSocket — just like normal scenario trigger
+    } catch (e) {
+      set({ scenarioLoading: false, error: (e as Error).message });
+    }
+  },
+
+  // Scenario comparison
+  toggleCompareMode: () => set((s) => ({
+    scenarioCompareMode: !s.scenarioCompareMode,
+    scenarioCompareBranches: !s.scenarioCompareMode ? s.scenarioCompareBranches : [],
+  })),
+  addCompareBranch: (scenarioId: number, branchIdx: number, title: string, shocks: ScenarioShock[]) =>
+    set((s) => {
+      // Max 2 branches for comparison
+      if (s.scenarioCompareBranches.length >= 2) return s;
+      // Prevent duplicate
+      if (s.scenarioCompareBranches.some((b) => b.scenarioId === scenarioId && b.branchIdx === branchIdx)) return s;
+      return {
+        scenarioCompareBranches: [...s.scenarioCompareBranches, { scenarioId, branchIdx, title, shocks }],
+      };
+    }),
+  removeCompareBranch: (scenarioId: number, branchIdx: number) =>
+    set((s) => ({
+      scenarioCompareBranches: s.scenarioCompareBranches.filter(
+        (b) => !(b.scenarioId === scenarioId && b.branchIdx === branchIdx)
+      ),
+    })),
+  clearCompareBranches: () => set({ scenarioCompareBranches: [] }),
 }));
 
 export function useGraphWebSocket() {

@@ -109,6 +109,90 @@ def propagate_signal(
     return result
 
 
+def _compress_impact(impact: float, stress_mult: float) -> float:
+    """Apply stress multiplier + sigmoid compression for extreme values.
+
+    When multiple shocks fire simultaneously, total impact is scaled by the
+    stress multiplier (> 1.0 for 4+ shocks). Impacts near ±1.0 are compressed
+    via a sigmoid-like curve to model diminishing returns.
+    """
+    import math
+
+    adjusted = impact * stress_mult
+    if abs(adjusted) > 0.8:
+        sign = 1.0 if adjusted > 0 else -1.0
+        excess = abs(adjusted) - 0.8
+        compressed = 0.8 + 0.2 * (1 - math.exp(-excess * 2.5))
+        adjusted = sign * compressed
+    return max(-1.0, min(1.0, adjusted))
+
+
+def merge_multi_shock_impacts(
+    shocks: list[dict],
+    graph: nx.DiGraph,
+    regime_val: str | None = None,
+) -> tuple[dict[str, dict], float]:
+    """Propagate multiple shocks and merge impacts with non-linear interaction.
+
+    For each shock, runs propagate_signal independently, then merges impacts
+    additively. When 4+ shocks fire simultaneously, a stress multiplier
+    amplifies the combined impact (modeling systemic stress). Extreme values
+    are compressed via sigmoid to model diminishing returns.
+
+    Returns (merged_impacts, stress_multiplier) where merged_impacts maps
+    node_id -> {"total_impact": float, "contributing_shocks": list, "hops": int}.
+    """
+    shocked_ids = {s.get("node_id") for s in shocks if s.get("node_id")}
+    merged: dict[str, dict] = {}
+
+    valid_shocks = 0
+    for shock in shocks:
+        nid = shock.get("node_id", "")
+        shock_value = shock.get("shock_value", 0.0)
+        if not nid or nid not in graph:
+            continue
+
+        current = graph.nodes[nid].get("composite_sentiment", 0.0) or 0.0
+        delta = shock_value - current
+        if abs(delta) < 0.001:
+            continue
+
+        valid_shocks += 1
+        prop_result = propagate_signal(graph, nid, delta, regime=regime_val)
+
+        for affected_nid, impact in prop_result.impacts.items():
+            if affected_nid in shocked_ids:
+                continue
+
+            if affected_nid not in merged:
+                merged[affected_nid] = {
+                    "total_impact": 0.0,
+                    "contributing_shocks": [],
+                    "hops": len(prop_result.paths.get(affected_nid, [])) - 1,
+                }
+
+            merged[affected_nid]["total_impact"] += impact
+            merged[affected_nid]["contributing_shocks"].append(nid)
+            new_hops = len(prop_result.paths.get(affected_nid, [])) - 1
+            if new_hops > 0:
+                merged[affected_nid]["hops"] = min(
+                    merged[affected_nid]["hops"], new_hops
+                )
+
+    # Non-linear interaction: stress multiplier for simultaneous shocks
+    stress_multiplier = 1.0
+    if valid_shocks > 3:
+        stress_multiplier = 1.0 + 0.15 * (valid_shocks - 3)
+
+    # Apply stress multiplier + sigmoid compression
+    for nid in merged:
+        merged[nid]["total_impact"] = _compress_impact(
+            merged[nid]["total_impact"], stress_multiplier
+        )
+
+    return merged, stress_multiplier
+
+
 def build_networkx_graph(nodes: list[dict], edges: list[dict]) -> nx.DiGraph:
     """Build a NetworkX DiGraph from node and edge dicts."""
     g = nx.DiGraph()

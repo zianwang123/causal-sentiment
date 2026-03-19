@@ -58,6 +58,7 @@ async def chat_with_tools(
     system: str,
     messages: list[dict],
     tools: list[dict],
+    max_tokens: int = 8192,
 ) -> tuple[LLMResponse, list[dict]]:
     """Send a message with tools and return (response, updated_messages).
 
@@ -67,15 +68,16 @@ async def chat_with_tools(
     provider = settings.llm_provider
 
     if provider == "openai":
-        return await _openai_round(system, messages, tools)
+        return await _openai_round(system, messages, tools, max_tokens=max_tokens)
     else:
-        return await _anthropic_round(system, messages, tools)
+        return await _anthropic_round(system, messages, tools, max_tokens=max_tokens)
 
 
 async def _anthropic_round(
     system: str,
     messages: list[dict],
     tools: list[dict],
+    max_tokens: int = 8192,
 ) -> tuple[LLMResponse, list[dict]]:
     import anthropic
 
@@ -86,7 +88,7 @@ async def _anthropic_round(
         try:
             response = await client.messages.create(
                 model=settings.anthropic_model,
-                max_tokens=8192,
+                max_tokens=max_tokens,
                 system=system,
                 tools=_anthropic_tools(tools),
                 messages=messages,
@@ -166,6 +168,7 @@ async def _openai_round(
     system: str,
     messages: list[dict],
     tools: list[dict],
+    max_tokens: int = 8192,
 ) -> tuple[LLMResponse, list[dict]]:
     import openai
 
