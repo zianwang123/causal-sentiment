@@ -1353,97 +1353,575 @@ For a given node:
 
 ## 22. Scenario Extrapolation Engine ("Macro Sim")
 
-The scenario engine is a strategic foresight tool that generates branching probability-weighted scenarios from any trigger — a news event, a hypothetical, or an auto-picked headline.
+The scenario engine is a strategic foresight tool that generates branching probability-weighted scenarios from any trigger — a news event, a hypothetical, or an auto-picked headline. It is the most complex subsystem in the project: a 4-agent pipeline with ~1,600 lines of orchestration code and ~1,050 lines of prompts.
 
-### Design: "Generate First, Map Second"
+### 22.1 Design Philosophy: "Generate First, Map Second"
 
-The agent reasons freely about real-world consequences first (unconstrained by the graph's 52 nodes), THEN is shown the graph topology and asked to map its impacts. This avoids anchoring bias and enables graph evolution — the agent can suggest new nodes and edges for impacts that don't fit the existing graph.
+The agent reasons freely about real-world consequences first (unconstrained by the graph's 52 nodes), THEN is shown the graph topology and asked to map its impacts. This is the single most important design decision in the scenario engine.
 
-### 4-Phase Multi-Agent Loop (max 27 rounds)
+**Why this matters:** If the Strategist were shown the graph topology during scenario generation, it would anchor to existing nodes and produce scenarios limited to "oil goes up, VIX goes up, equities go down" — the obvious first-order effects. By withholding the graph until Phase 4, the Strategist reasons about constitutional court rulings, deposit flight mechanics, TARGET2 imbalances, carry trade unwinds — concepts that don't have graph nodes but represent real transmission mechanisms. The Mapper then identifies these as graph gaps and suggests new nodes.
 
-Each phase is a separate sub-agent with fresh conversation context and focused tools:
+**Isolation principle:** The scenario agent reuses existing **code** (search_news, fetch_market_prices, validate_consistency, LLM client, WebSocket) but NEVER reads previous agent **outputs** (stored sentiments, past agent runs, prediction history). It reads only graph topology (nodes + edges = domain knowledge). Shocks are generated relative to neutral (0), not relative to current graph sentiment. This prevents anchoring to stale state and keeps scenarios fresh.
 
-| Phase | Agent | Rounds | Tools | Purpose |
-|-------|-------|--------|-------|---------|
-| 1. Research | Researcher | 4 | `search_news`, `fetch_market_prices`, `get_economic_calendar` | Structural situational awareness: facts, actors, market reaction, upcoming catalysts |
-| 2. History | Historian | 5 | `search_news`, `fetch_market_prices`, `fetch_historical_prices` | Find structural parallels, ground magnitudes in real price data |
-| 3. Generation | Strategist | 12 | `search_news`, `fetch_market_prices`, `get_economic_calendar`, `fetch_options_summary` | Build 2-3 branches with free-form impacts, deep causal chains, probability weights |
-| 4. Mapping | Mapper | 6 | `get_graph_topology`, `preview_propagation`, `validate_consistency` | Map impacts to graph nodes, calibrate shock values, verify cascades, suggest new nodes/edges |
+### 22.2 Architecture: 4-Phase Multi-Agent Pipeline
 
-**Context injection:** Current date + market snapshot (SPY, VIX, Oil, DXY, 10Y) injected into Phases 1-3. Domain-specific supplements auto-detected from trigger keywords. Vulnerability context (extreme-sentiment nodes, high-weight edges) injected as fragility points. Resolved scenario prediction track record injected into Phase 3 for self-calibration.
+```
+Trigger (user text or auto-picked from news)
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│  Pre-flight: validate API key, auto-pick trigger    │
+│  if empty, fetch market snapshot (SPY/VIX/Oil/DXY/  │
+│  10Y), detect trigger domain, build vulnerability   │
+│  context from graph state                           │
+└────────────────────┬────────────────────────────────┘
+                     │
+    ┌────────────────▼─────────────────┐
+    │  Phase 1: RESEARCHER (4 rounds)  │
+    │  Tools: search_news,             │
+    │         fetch_market_prices,     │
+    │         get_economic_calendar    │
+    │  Output: submit_research →       │
+    │    {trigger, facts, key_actors,  │
+    │     market_reaction,             │
+    │     structural_context,          │
+    │     domain_classification}       │
+    └────────────────┬─────────────────┘
+                     │ research brief (formatted text)
+    ┌────────────────▼─────────────────┐
+    │  Phase 2: HISTORIAN (5 rounds)   │
+    │  Tools: search_news,             │
+    │         fetch_market_prices,     │
+    │         fetch_historical_prices  │
+    │  Output: submit_history →        │
+    │    {parallels: [{event,          │
+    │     structural_match,            │
+    │     transmission_mechanism,      │
+    │     duration, consensus_error,   │
+    │     specific_data}]}             │
+    └────────────────┬─────────────────┘
+                     │ historical brief (formatted text)
+    ┌────────────────▼─────────────────┐
+    │  Phase 3: STRATEGIST (12 rounds) │
+    │  Tools: search_news,             │
+    │         fetch_market_prices,     │
+    │         get_economic_calendar,   │
+    │         fetch_options_summary    │
+    │  Input: research + history +     │
+    │    track record + date/snapshot  │
+    │  Output: submit_free_scenarios → │
+    │    {branches: [{title,           │
+    │     probability, narrative,      │
+    │     causal_chain,                │
+    │     free_form_impacts,           │  ← NOT node IDs
+    │     specific_predictions,        │
+    │     structural_outcome}]}        │
+    └────────────────┬─────────────────┘
+                     │ coherence check (Jaccard)
+    ┌────────────────▼─────────────────┐
+    │  Phase 4: MAPPER (6 rounds)      │
+    │  Tools: get_graph_topology,      │
+    │         preview_propagation,     │
+    │         validate_consistency     │
+    │  Input: strategist branches +    │
+    │    full graph topology (52 nodes,│
+    │    117 edges, NO sentiments)     │
+    │  Output: submit_scenarios →      │
+    │    {branches: [{shocks,          │  ← NOW node IDs
+    │     node_suggestions,            │
+    │     edge_suggestions, ...}]}     │
+    └────────────────┬─────────────────┘
+                     │
+    ┌────────────────▼─────────────────┐
+    │  Post-processing:                │
+    │  - Persist shocks, suggestions   │
+    │  - Extract market predictions    │
+    │  - Broadcast completion via WS   │
+    └──────────────────────────────────┘
+```
 
-### Isolation Principle
+Each sub-agent gets a **fresh conversation** — no cross-contamination between phases. Only the formatted brief is passed forward. Max tokens per LLM call: 24,576 (higher than the main agent's 8,192 to accommodate large structured JSON outputs).
 
-The scenario agent reuses existing **code** (search_news, fetch_market_prices, validate_consistency, LLM client, WebSocket) but NEVER reads previous agent **outputs** (stored sentiments, past agent runs, prediction history). It reads only graph topology (nodes + edges = domain knowledge). Shocks are generated relative to neutral (0), not relative to current graph sentiment.
+### 22.3 Sub-Agent Runner
 
-### Three Branch Types
+`_run_sub_agent()` is the core loop shared by all 4 phases:
 
-- **Base case (~50-60%)**: Well-reasoned mainstream scenario with clear transmission mechanics
-- **Alternative (~25-35%)**: Non-obvious scenario connecting domains most analysts treat separately
-- **Tail risk (~5-15%)**: The scenario where a consensus assumption breaks — not random doom, but a specific mechanism that's being systematically underpriced
+1. Initialize messages with user prompt
+2. For each round (up to phase budget):
+   a. Call `chat_with_tools(system, messages, tools, max_tokens=24576)`
+   b. If `llm_response.done` or no tool calls → break
+   c. For each tool call:
+      - If submission tool (`submit_research`, `submit_history`, `submit_free_scenarios`, `submit_scenarios`) → intercept input as result, return `{"status": "accepted"}`
+      - If convergence-checked tool (`search_news`, `fetch_market_prices`) → check Jaccard similarity against recent calls; if >0.7, return nudge instead of executing
+      - Otherwise → dispatch to `_execute_scenario_tool()`
+   d. Append tool results to messages
+   e. Broadcast progress via WebSocket
+   f. If submission intercepted → break
+3. If no submission tool called → extract last assistant text as `{"_text_brief": text}` fallback
 
-### Calibration
+**Fallback chain:** If the Strategist doesn't call `submit_free_scenarios`, the scenario is marked completed with an error note. If the Mapper doesn't call `submit_scenarios`, `_fallback_from_strategist()` converts free-form impacts to empty shocks (preserving narratives and causal chains but without graph mapping).
 
-Shock values are calibrated against historical anchors: 2008 GFC (S&P -0.9), 2020 COVID (VIX +0.95), 2022 rate shock (fed_funds +0.9), SVB 2023 (regional banks -0.6), etc. The agent is instructed to use specific mechanisms ("risk-parity funds de-leveraging as realized vol breaches target") rather than vague directions ("markets sell off").
+### 22.4 Context Injection
 
-### Graph Evolution
+Before Phase 1, the orchestrator pre-fetches and injects several context layers:
 
-When the agent identifies impacts that don't map to existing nodes, it suggests new nodes (stored as `NodeSuggestion`) and edges (stored as `EdgeSuggestion`). Users can "Apply + Evolve" to temporarily add these to the in-memory graph (shown in purple). Hypothetical nodes are removed when the user runs a full analysis or clicks "Clear."
+**Current date + market snapshot:**
+```
+## Current Date: 2026-03-19
+## Current Market Context
+- SPY: 567.23 (+0.45% 1d, -1.23% 5d)
+- ^VIX: 18.32 (-2.10% 1d, +5.67% 5d)
+- CL=F: 68.91 (+1.05% 1d, -3.45% 5d)
+- DX-Y.NYB: 104.12 (+0.15% 1d, +0.89% 5d)
+- ^TNX: 4.28 (-0.50% 1d, +2.10% 5d)
+```
+Injected into Phases 1, 2, and 3 so the agent knows the current date (preventing temporal grounding errors from training cutoff) and current market levels.
 
-### Non-Linear Multi-Shock Simulation
+**Domain-specific supplements:** The trigger text is classified against 7 domain keyword sets:
 
-When a user applies a scenario branch, `merge_multi_shock_impacts()` in `propagation.py` runs `propagate_signal()` for each shock independently, then applies non-linear adjustments:
+| Domain | Example Keywords | Supplement Focus |
+|--------|-----------------|------------------|
+| `geopolitical` | war, invasion, strait, hormuz, nato | Actor-incentive-capability analysis, chokepoints, proxy networks, alliance fracture |
+| `policy_monetary` | fed, fomc, ecb, rate cut, taper | Transmission lag structure, carry trade exposure, collateral chains, forward guidance credibility |
+| `trade_tariff` | tariff, reshoring, decoupling, wto | Retaliation sequences, substitution timelines, consumer price pass-through, FX weaponization |
+| `technology_systemic` | cyberattack, ai disruption, outage | Concentration risk, platform dependency, labor dislocation, regulatory lag |
+| `climate_energy` | hurricane, renewable, carbon tax | Stranded assets, transition bottlenecks, insurance withdrawal, green premium inflation |
+| `pandemic_health` | pandemic, virus, lockdown, vaccine | Behavioral cascade, JIT fragility, fiscal capacity, vaccine timeline |
+| `corporate_financial` | default, bankruptcy, bank run | Counterparty network, collateral chain, deposit flight speed, regulatory intervention threshold |
 
-- **Stress multiplier:** When 4+ shocks fire simultaneously: `multiplier = 1.0 + 0.15 * (n_shocks - 3)`. This models systemic stress amplification.
-- **Sigmoid compression:** For |impact| > 0.8: `compressed = sign * (0.8 + 0.2 * (1 - exp(-excess * 2.5)))`. Diminishing returns near extremes.
-- Results are clamped to [-1.0, 1.0]. Read-only — no DB writes to graph state.
+Multi-word phrases score 2 points; single words score 1. Top 2 domains are injected. Each supplement includes cross-domain cascade prompts.
 
-### Cross-Branch Coherence Check
+**Vulnerability context:** Graph state is scanned for:
+- Nodes with extreme sentiment (|composite_sentiment| > 0.7) → listed as "fragility points"
+- Highest-weight transmission channels (effective_weight > 0.5) → listed as "strongest causal links"
+- Current regime (risk_on / risk_off / transitioning)
 
-After Phase 3, Jaccard similarity is computed across branch impact word sets. Pairs with >0.8 overlap are flagged as "too similar" (logged as warnings). This prevents the LLM from producing three variations of the same scenario.
+**Track record:** Resolved `ScenarioPrediction` records are queried and formatted as calibration feedback for the Strategist:
+- Overall hit rate by confidence bucket (low 0-0.3, medium 0.3-0.6, high 0.6-1.0)
+- Systematic bias flags: "OVERCONFIDENT" if high-confidence bucket <50% hit rate (≥3 predictions)
+- Last 5 resolved predictions with outcomes
 
-### Convergence Detection
+### 22.5 Prompt Engineering
 
-The sub-agent loop tracks recent tool calls (name + input word set). If the same tool is called with >70% Jaccard similarity to a previous call, a nudge is injected: "Synthesize what you have and proceed to submission." This prevents token waste from redundant searches.
+The prompts (~1,050 lines in `scenario_prompts.py`) are the core intellectual property of the scenario engine. Key design techniques:
 
-### Scenario Chaining
+**BAD/GOOD contrast pairs** — Used in Strategist and Mapper prompts to prevent lazy outputs:
+```
+BAD: "Markets would sell off and volatility would increase."
+GOOD: "Forced selling from CTAs hitting stop-loss levels around S&P 4,200,
+triggering ~$50B of systematic selling over 2-3 days. This would push
+realized vol above 25, forcing risk-parity funds to de-lever both equity
+AND bond allocations simultaneously."
+```
 
-`POST /api/scenarios/{id}/chain` with `{branch_idx, follow_up_trigger}` creates a child scenario where the parent branch's outcome is injected as "assumed context" into Phase 1. The child's `Scenario` record has `parent_scenario_id` and `parent_branch_idx` for chain tracking. Enables multi-step strategic planning.
+**"And Then What?" doctrine** — The Strategist is instructed to recursively ask "and then what?" at least 3 times for every consequence, with worked examples:
+```
+Khamenei killed → IRGC factional vacuum → Houthi/Hezbollah proxy commanders
+act independently → Strait of Hormuz harassment → tanker insurance +500% →
+shipping reroutes add 10-14 days → global supply chain cost spike
+```
 
-### Scenario Comparison (Frontend)
+**Temporal layering** — Every causal chain must have at least 3 temporal layers:
+- IMMEDIATE (0-24h): Reflexive, automated responses
+- SHORT-TERM (1-7d): Deliberate responses, initial repricing
+- MEDIUM-TERM (1-4w): Second-order effects materialize
+- STRUCTURAL (1-6m): Regime shifts, new equilibria (required for at least one path per branch)
 
-Compare mode in ScenarioPanel lets users select 2 branches side-by-side. Shows node-by-node shock comparison with color coding: green (both positive), red (both negative), blue (opposite directions), gray (unique to one branch). "Common Risk Nodes" section highlights nodes affected regardless of branch direction.
+**Calibration anchors** — ~120 lines of specific historical precedents with shock magnitudes:
 
-### Topic Diversity
+| Event | Shock Reference |
+|-------|----------------|
+| 2008 GFC | S&P from +0.3 to -0.9 over 6 months |
+| 2023 SVB | Regional banks -0.6, broader financials -0.3, VIX +0.4 |
+| Russia-Ukraine 2022 | Oil +0.5, gas +0.7, gold +0.3, European equities -0.4 |
+| Soleimani 2020 | Oil +4% intraday then faded in 3 days |
+| COVID 2020 | VIX from -0.3 to +0.95 in 2 weeks |
+| 2022 Rate Shock | Fed funds from -0.2 to +0.9 over 12 months |
+| UK LDI 2022 | Gilt yields +0.6 in days, pension forced selling spiral |
+| US-China tariffs 2018 | Market impact from UNCERTAINTY (capex froze), not tariff cost |
+| Texas freeze 2021 | Natural gas +0.8, power prices 100x ($9,000/MWh) |
 
-Quick triggers use 12 domain-aligned news queries (geopolitics, monetary, trade, tech, energy, financial stability, health, labor, sovereign, housing, EM, food) instead of a single generic query. The LLM picks top 5 with an explicit diversity mandate ("do not pick multiple events from the same domain"). Recent scenario triggers are injected as avoidance list. Auto-pick uses `random.choice(triggers[:5])`.
+**Probability anchoring** — Base rates provided as starting points:
+- Geopolitical escalation beyond initial event: ~25-35%
+- Monetary policy surprises that break consensus: ~15-20%
+- Trade wars escalating beyond initial tariffs: ~40-50%
 
-### API Endpoints
+**Domain-specific escalation frameworks** — 7 cascade logic templates:
+- Geopolitical: trace POLITICAL cascade first (power structures → escalation ladder → proxy activation → chokepoints)
+- Monetary: trace TRANSMISSION MECHANISM first (lag structure → carry trade exposure → collateral chains)
+- Trade: trace SUPPLY CHAIN cascade first (retaliation sequence → substitution timelines → consumer pass-through)
+- etc.
+
+**Mapper decision criteria** — Explicit guidance on when to use existing nodes vs. suggest new ones:
+- Directionality notes: spread nodes (positive = wider = more stress), yield nodes (positive = higher yields), currency nodes (DXY vs. individual pairs)
+- Mapping examples with calibration reasoning
+- Instruction to call `preview_propagation` to verify cascades match narrative before submitting
+
+### 22.6 Tool Details
+
+**`get_economic_calendar(days_ahead=30)`** — Returns upcoming macro events:
+- Hardcoded FOMC dates for 2025-2027
+- Rule-based recurring releases: CPI (~12th monthly), NFP (first Friday), GDP (quarterly), PCE (~28th monthly), ISM (1st business day)
+- Optional FRED releases API (`https://api.stlouisfed.org/fred/releases/dates`) for precise dates when `FRED_API_KEY` is configured
+- Returns `[{name, date, type, description}]` sorted by date
+
+**`fetch_options_summary(ticker)`** — Returns options positioning via yfinance:
+- Put/call ratio (volume-weighted)
+- OI-weighted average implied volatility (calls and puts separately)
+- Highest open-interest strike levels (call and put)
+- IV term structure: near-month vs. next-month IV, contango flag, slope
+- Graceful degradation if ticker has no options data
+
+**`fetch_historical_prices(ticker, start_date, end_date)`** — Returns summary stats (not raw bars):
+- Open, close, high, low, total return, max drawdown, peak/trough dates, annualized volatility
+- Max 1 year per request. Async via `asyncio.to_thread()`
+
+**`preview_propagation(shocks)`** — Runs `merge_multi_shock_impacts()` and returns top 15 affected nodes:
+- Node ID, label, impact magnitude, contributing shocks, hop count
+- Non-linear note included when stress multiplier > 1.0
+
+**`get_graph_topology()`** — Returns full graph structure without sentiment values:
+- 52 nodes: id, label, node_type, description
+- 117 edges: source, target, direction, base_weight, description
+- No composite_sentiment, no confidence, no evidence — prevents contamination
+
+### 22.7 Three Branch Types
+
+- **Base case (~50-60%)**: Well-reasoned mainstream scenario with clear transmission mechanics. "An expert reads this and nods."
+- **Alternative (~25-35%)**: Non-obvious scenario connecting domains most analysts treat separately. "An expert reads this and pauses to think."
+- **Tail risk (~5-15%)**: The scenario where a consensus assumption breaks — not random doom, but a specific mechanism being systematically underpriced. "An expert reads this and says 'I need to check our exposure to that.'"
+
+Each branch must include: title, probability (with explicit reasoning), narrative, causal chain (temporal layers), structural outcome (1-6 month new equilibrium), free-form impacts, specific predictions (≥2 market-checkable with ticker/direction/threshold), time horizon, invalidation condition, key assumption.
+
+### 22.8 Non-Linear Multi-Shock Simulation
+
+`merge_multi_shock_impacts()` in `propagation.py` is used by both `_preview_propagation` (during agent reasoning) and `apply_scenario_branch` (when user applies a branch):
+
+```python
+# For each shock:
+delta = shock_value - current_sentiment
+propagation_result = propagate_signal(graph, node_id, delta, regime=regime_val)
+
+# Merge all propagation results additively
+merged[affected_node]["total_impact"] += impact
+
+# Non-linear adjustments:
+# 1. Stress multiplier for simultaneous shocks
+if n_shocks > 3:
+    stress_multiplier = 1.0 + 0.15 * (n_shocks - 3)
+
+# 2. Sigmoid compression near extremes
+if abs(adjusted) > 0.8:
+    compressed = sign * (0.8 + 0.2 * (1 - exp(-excess * 2.5)))
+
+# 3. Clamp to [-1.0, 1.0]
+```
+
+| Shocks | Stress Multiplier | Effect |
+|--------|-------------------|--------|
+| 1-3 | 1.0 | Pure additive (no amplification) |
+| 4 | 1.15 | 15% amplification |
+| 5 | 1.30 | 30% amplification |
+| 8 | 1.75 | 75% amplification |
+
+The sigmoid compression prevents runaway values: an impact of 1.5 after stress multiplication compresses to ~0.95 instead of clamping to 1.0.
+
+### 22.9 Prediction Extraction & Auto-Resolution
+
+After scenario completion, `_extract_and_store_predictions()` processes each branch's `specific_predictions`:
+
+**Ticker normalization** — LLMs invent ticker symbols. Two mapping layers:
+1. Market term → yfinance: `"brent" → "BZ=F"`, `"gold" → "GC=F"`, `"10-year" → "^TNX"`, `"high yield" → "HYG"` (19 mappings)
+2. LLM-invented → yfinance: `"US10Y" → "^TNX"`, `"XAUUSD" → "GC=F"`, `"USOIL" → "CL=F"`, `"DXY" → "DX-Y.NYB"` (18 mappings)
+
+**Time window parsing** — Converts free-text to absolute expiry:
+- `"1-2 weeks"` → upper bound (2 weeks from now)
+- `"5 business days"` → `days * 7/5` conversion
+- `"1-3 months"` → `upper_bound * 30` days
+- Returns `None` for unparseable strings
+
+**Direction extraction** — Regex parses `above/below/over/under/exceeds/drops below` from prediction text when structured fields are missing.
+
+Stored as `ScenarioPrediction` with: `scenario_id, branch_idx, branch_title, prediction_text, confidence, time_window, expires_at, ticker, threshold_value, threshold_direction, resolution_type (pending|market_resolved|unresolvable), resolved_at, actual_value, hit`.
+
+### 22.10 Data Persistence
+
+**Scenario** (PostgreSQL):
+```
+id, trigger, trigger_type, status (running|completed|error),
+scenarios_json (JSONB — full output), research_summary, historical_parallels,
+selected_branch_idx, simulation_result, error,
+parent_scenario_id (FK → scenarios.id), parent_branch_idx,
+created_at, finished_at
+```
+
+**ScenarioShock**: `id, scenario_id, branch_idx, node_id, shock_value [-1,1], reasoning, original_impact, created_at`
+
+**ScenarioPrediction**: `id, scenario_id, branch_idx, branch_title, prediction_text, confidence, time_window, expires_at, ticker, threshold_value, threshold_direction, resolution_type, resolved_at, actual_value, hit, created_at`
+- Indexed on `scenario_id` and pending predictions (`resolved_at IS NULL`)
+
+**NodeSuggestion**: `id, scenario_id, branch_idx, suggested_id, suggested_label, suggested_type, description, reasoning, status (pending|accepted|rejected), created_at`
+
+**EdgeSuggestion**: Stored only when both endpoints are existing graph nodes (FK constraint). Edges referencing suggested-only nodes are preserved in `scenarios_json` for frontend display.
+
+### 22.11 WebSocket Broadcasting
+
+**Progress** — Broadcast after every tool call:
+```json
+{"type": "scenario_progress", "data": {
+  "scenario_id": 29, "round": 5, "max_rounds": 27,
+  "phase": "generation", "total_tool_calls": 12
+}}
+```
+
+**Completion** — Broadcast when scenario finishes:
+```json
+{"type": "scenario_complete", "data": {
+  "scenario_id": 29, "status": "completed",
+  "trigger": "...", "branch_count": 3,
+  "branches": [{"title": "...", "probability": 0.55, "shock_count": 5}]
+}}
+```
+
+Broadcasts are fire-and-forget via `asyncio.create_task()` with done-callbacks tracked in `_broadcast_tasks` set. Non-blocking — broadcast failures are logged at debug level.
+
+### 22.12 Error Handling
+
+- **API key validation** — Returns `Scenario(status="error")` immediately if no key configured
+- **No news found** — Returns error scenario when auto-pick finds nothing
+- **Sub-agent failure** — Logs exception, creates fresh session for error persistence (original session may be stale after long run), sets `status="error"` with truncated error text
+- **Session staleness** — Fresh `async_session()` created for prediction extraction to avoid greenlet issues from the long-running agent session
+- **Non-fatal failures** — Track record query failure, prediction extraction failure, broadcast failure — all logged as warnings, scenario still completes
+- **Graph lock** — Not held during scenario generation (scenarios are read-only analysis). Lock only acquired when user applies shocks to graph.
+
+### 22.13 Graph Evolution
+
+When the Mapper identifies impacts that don't map to existing nodes:
+- **NodeSuggestion** — `{suggested_id (snake_case), suggested_label, suggested_type, description, reasoning}`
+- **EdgeSuggestion** — `{source_id, target_id, direction, reasoning}`
+- Edge validation: edges can reference suggested nodes (for frontend display) but only edges between existing graph nodes are persisted to DB (FK constraint)
+
+When user clicks "Apply + Evolve":
+1. Hypothetical nodes added to in-memory graph with `hypothetical=True` flag
+2. Tracked in `app_state.hypothetical_node_ids` and `app_state.hypothetical_edge_keys`
+3. Rendered in purple on the 3D graph
+4. Removed via `/reset-evolve` endpoint or "Clear" button
+
+### 22.14 Cross-Branch Coherence Check
+
+After Phase 3, `_check_branch_coherence()` computes word-set Jaccard similarity across branch `free_form_impacts`:
+
+```python
+for each pair (branch_i, branch_j):
+    words_i = set(words from all free_form_impacts in branch_i)
+    words_j = set(words from all free_form_impacts in branch_j)
+    jaccard = |words_i ∩ words_j| / |words_i ∪ words_j|
+    if jaccard > 0.8:
+        log warning "branches are too similar"
+```
+
+Purely informational — logs warnings but does not block. Prevents the LLM from producing three variations of the same scenario.
+
+### 22.15 Convergence Detection
+
+The sub-agent runner tracks recent tool calls to prevent redundant searches:
+
+```python
+recent_calls: list[(tool_name, word_set)]  # last 8 calls
+for each new tool call:
+    if tool_name in {search_news, fetch_market_prices}:
+        input_words = set(words from JSON input)
+        for (prev_name, prev_words) in recent_calls:
+            if prev_name == tool_name:
+                jaccard = |input_words ∩ prev_words| / |input_words ∪ prev_words|
+                if jaccard > 0.7:
+                    return nudge: "Synthesize what you have and proceed to submission"
+```
+
+Only applied to `search_news` and `fetch_market_prices` — not to submission tools or validation tools.
+
+### 22.16 Scenario Chaining
+
+`POST /api/scenarios/{id}/chain` with `{branch_idx, follow_up_trigger}`:
+
+1. Fetch parent scenario from DB
+2. Extract parent branch: narrative, shocks (first 10), structural outcome
+3. Build parent context string:
+   ```
+   The following scenario has ALREADY PLAYED OUT (treat as given):
+   Parent trigger: ...
+   Branch that materialized: ... (55% probability)
+   Narrative: ...
+   Shocks applied: [...]
+   Structural outcome: ...
+   Now analyze the FOLLOW-UP trigger: "..."
+   ```
+4. Create child `Scenario` with `parent_scenario_id` and `parent_branch_idx`
+5. Launch `run_scenario_extrapolation()` in background with parent context prepended to Phase 1
+
+Enables multi-step strategic planning: "If the ECB intervenes (Branch A), what happens when Italy holds elections 3 months later?"
+
+### 22.17 Scenario Comparison (Frontend)
+
+Compare mode in `ScenarioPanel.tsx`:
+
+1. User clicks "Compare" toggle in header
+2. Checkbox appears on each branch card (max 2 selections)
+3. When 2 branches selected, `ComparisonView` renders:
+   - Side-by-side titles + probabilities
+   - Node impact table: `node_id | Branch A shock | Branch B shock | color`
+   - Color coding: green (both positive), red (both negative), blue (opposite directions), gray (unique to one branch)
+   - "Common Risk Nodes" section — nodes affected in both branches regardless of direction
+
+State managed in Zustand store: `scenarioCompareMode`, `scenarioCompareBranches[]`.
+
+### 22.18 Topic Diversity (Quick Triggers)
+
+**Problem solved:** A single news query (`"markets economy geopolitics"`) caused the engine to always pick the dominant story (e.g., tariffs in 2026).
+
+**Solution:** 12 domain-aligned queries run concurrently:
+
+| # | Query | Domain |
+|---|-------|--------|
+| 1 | `geopolitics conflict war sanctions military escalation` | Geopolitical/military |
+| 2 | `central banks monetary policy rate decision FOMC ECB BOJ` | Monetary policy |
+| 3 | `tariffs trade war supply chain reshoring sanctions` | Trade/tariff |
+| 4 | `AI disruption technology cyber attack outage systemic` | Technology |
+| 5 | `energy crisis oil gas climate transition renewable` | Energy/climate |
+| 6 | `bank failure credit crisis contagion default bankruptcy` | Financial stability |
+| 7 | `pandemic outbreak virus health emergency supply chain` | Health |
+| 8 | `labor shortage strike immigration wage automation` | Labor/demographics |
+| 9 | `government debt fiscal deficit downgrade sovereign crisis` | Sovereign debt |
+| 10 | `housing market mortgage commercial real estate crisis` | Real estate |
+| 11 | `China economy emerging markets currency crisis capital flight` | EM/China |
+| 12 | `food prices agriculture drought famine water crisis` | Food/agriculture |
+
+3 articles per query → ~36 headlines, deduplicated by title prefix (first 50 chars). LLM picks top 5 with explicit diversity mandate: "Do NOT pick multiple events from the same domain." Recent scenario triggers (last 5) injected as avoidance list.
+
+`_auto_pick_trigger()` uses `random.choice(triggers[:5])` instead of always picking #1, ensuring different topics across multiple auto-generated scenarios.
+
+### 22.19 Output Schema
+
+Complete `scenarios_json` structure stored in the `Scenario` JSONB column:
+
+```json
+{
+  "research_summary": "...",
+  "historical_parallels": "...",
+  "branches": [
+    {
+      "title": "Orderly Repricing with ECB Backstop",
+      "probability": 0.55,
+      "probability_reasoning": "Most likely as ECB has proven intervention capability...",
+      "narrative": "A sovereign downgrade cascade begins...",
+      "causal_chain": [
+        "TRIGGER: Italy faces credit rating downgrade...",
+        "PATH A (Financial Markets, Mark-to-Market Cascade):",
+        "IMMEDIATE (0-24h): European bank stocks gap down 8-12%...",
+        "-> SHORT-TERM (1-7d): Banks report mark-to-market losses...",
+        "-> MEDIUM-TERM (1-4w): ECB announces conditional program...",
+        "-> STRUCTURAL (1-6m): Banking sector consolidation...",
+        "CROSS-DOMAIN SPILLOVER: Financial stress triggers..."
+      ],
+      "structural_outcome": "Permanent repricing of eurozone sovereign risk...",
+      "time_horizon": "weeks",
+      "invalidation": "ECB legally constrained from intervention...",
+      "key_assumption": "ECB maintains credibility despite inflation...",
+      "free_form_impacts": [
+        "European bank equity valuations drop 15-25%",
+        "Credit spreads widen 75-100bps across eurozone periphery"
+      ],
+      "specific_predictions": [
+        {
+          "prediction": "European financials falls 15-25%",
+          "confidence": 0.8,
+          "time_window": "2-4 weeks",
+          "ticker": "SX7E",
+          "direction": "below",
+          "threshold": 85
+        }
+      ],
+      "shocks": [
+        {
+          "node_id": "financials_sector",
+          "shock_value": -0.5,
+          "reasoning": "European bank equity valuations drop 15-25%...",
+          "original_impact": "European bank equity valuations drop 15-25%"
+        }
+      ],
+      "node_suggestions": [
+        {
+          "suggested_id": "european_bank_equity",
+          "suggested_label": "European Bank Equity",
+          "suggested_type": "equities",
+          "description": "European banking sector equity index (STOXX Banks)",
+          "reasoning": "Graph only has US Financials Sector (XLF)"
+        }
+      ],
+      "edge_suggestions": [
+        {
+          "source_id": "eurusd",
+          "target_id": "financials_sector",
+          "direction": "positive",
+          "reasoning": "EUR weakness coincides with banking stress"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 22.20 Constants & Thresholds
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `PHASE1_ROUNDS` | 4 | Researcher round budget |
+| `PHASE2_ROUNDS` | 5 | Historian round budget |
+| `PHASE3_ROUNDS` | 12 | Strategist round budget (core value) |
+| `PHASE4_ROUNDS` | 6 | Mapper round budget |
+| `MAX_ROUNDS` | 27 | Total budget across all phases |
+| `SCENARIO_MAX_TOKENS` | 24,576 | LLM output token limit (3x main agent) |
+| Extreme sentiment threshold | ±0.7 | Flags as fragility point in vulnerability context |
+| High-weight edge threshold | >0.5 | Effective weight for "strongest causal links" |
+| Shock value clamping | [-1.0, 1.0] | Min/max during persistence |
+| Preview propagation top-N | 15 | Affected nodes returned in preview |
+| Stress multiplier onset | >3 shocks | Non-linear amplification begins |
+| Stress multiplier rate | +0.15 per shock | Linear scaling above threshold |
+| Sigmoid compression onset | |impact| > 0.8 | Diminishing returns begin |
+| Convergence Jaccard threshold | >0.7 | Triggers redundant search nudge |
+| Coherence Jaccard threshold | >0.8 | Flags branch pair as too similar |
+| Prediction calibration buckets | 0.3, 0.6 | Low/medium/high confidence boundaries |
+| Quick trigger queries | 12 | Domain-aligned news scan breadth |
+| Quick trigger results | 5 | LLM picks per scan (was 3) |
+| Recent trigger avoidance | 5 | Past scenarios to inject as "avoid" |
+
+### 22.21 API Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/api/scenarios` | Trigger scenario generation (background) |
-| GET | `/api/scenarios` | List recent scenarios |
-| GET | `/api/scenarios/{id}` | Get full scenario with branches |
-| POST | `/api/scenarios/{id}/apply` | Apply branch shocks to graph (read-only simulate) |
-| POST | `/api/scenarios/{id}/chain` | Chain a follow-up scenario from a parent branch |
-| POST | `/api/scenarios/{id}/evolve` | Add hypothetical nodes/edges from branch |
+| POST | `/api/scenarios` | Trigger scenario generation (background task) |
+| GET | `/api/scenarios?limit=20` | List recent scenarios with branch counts |
+| GET | `/api/scenarios/{id}` | Get full scenario with branches, shocks, suggestions |
+| POST | `/api/scenarios/{id}/apply` | Apply branch shocks to graph (non-linear multi-shock, read-only) |
+| POST | `/api/scenarios/{id}/chain` | Chain follow-up scenario from parent branch outcome |
+| POST | `/api/scenarios/{id}/evolve` | Add hypothetical nodes/edges from branch suggestions |
 | POST | `/api/scenarios/reset-evolve` | Remove all hypothetical nodes/edges |
-| GET | `/api/scenarios/quick-triggers` | Get 5 scenario-worthy events from 12-domain news scan |
+| GET | `/api/scenarios/quick-triggers` | Get 5 diverse scenario-worthy events from 12-domain news scan |
+| GET | `/api/scenarios/hypothetical` | Get current hypothetical node/edge state |
 
-### Key Files
+### 22.22 Key Files
 
-| File | Role |
-|------|------|
-| `backend/app/agent/scenario_agent.py` | 4-phase multi-agent orchestrator, convergence detection, coherence check, topic diversity |
-| `backend/app/agent/scenario_prompts.py` | Strategic foresight prompts (expanded Mapper with BAD/GOOD examples) |
-| `backend/app/agent/scenario_schemas.py` | Tool schemas (economic calendar, options summary, preview propagation) |
-| `backend/app/data_pipeline/calendar.py` | Economic calendar (FOMC dates, recurring releases, FRED API) |
-| `backend/app/data_pipeline/market.py` | Options positioning (IV, put/call ratio, term structure) |
-| `backend/app/graph_engine/propagation.py` | `merge_multi_shock_impacts()` with non-linear model |
-| `backend/app/models/scenarios.py` | Scenario (+ parent chaining), ScenarioShock, ScenarioPrediction, NodeSuggestion |
-| `backend/app/api/routes_scenario.py` | API endpoints (+ chain endpoint) |
-| `frontend/src/components/ScenarioPanel.tsx` | Scenario UI (+ comparison view, chain UI) |
+| File | Lines | Role |
+|------|-------|------|
+| `backend/app/agent/scenario_agent.py` | ~1,600 | 4-phase orchestrator, sub-agent runner, tool dispatch, prediction extraction, track record, topic diversity, convergence detection, coherence check |
+| `backend/app/agent/scenario_prompts.py` | ~1,050 | System prompts (Researcher, Historian, Strategist, Mapper), phase user prompts, calibration anchors, domain escalation frameworks, quick triggers prompt |
+| `backend/app/agent/scenario_schemas.py` | ~460 | Tool schemas: `get_graph_topology`, `get_economic_calendar`, `fetch_options_summary`, `fetch_historical_prices`, `preview_propagation`, 4 submission tools, per-phase tool lists |
+| `backend/app/data_pipeline/calendar.py` | ~190 | Economic calendar: FOMC dates 2025-2027, recurring release rules, FRED releases API integration |
+| `backend/app/data_pipeline/market.py` | ~260 | `fetch_options_summary()`: IV, put/call ratio, key strikes, term structure via yfinance |
+| `backend/app/graph_engine/propagation.py` | ~200 | `merge_multi_shock_impacts()`: stress multiplier + sigmoid compression + per-shock propagation |
+| `backend/app/models/scenarios.py` | ~82 | `Scenario` (+ parent chaining), `ScenarioShock`, `ScenarioPrediction`, `NodeSuggestion` |
+| `backend/app/api/routes_scenario.py` | ~590 | API endpoints, `_extract_branches()`, chain endpoint, evolve/reset endpoints |
+| `frontend/src/components/ScenarioPanel.tsx` | ~700 | Scenario UI: trigger input, quick triggers, branch cards, shock editor, comparison view, chain UI, export |
 
 ---
 
