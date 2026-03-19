@@ -57,7 +57,7 @@ This is exactly how a macro strategist thinks about positioning: "if X happens, 
 - **Prediction tracking** — agent records falsifiable predictions, system auto-resolves and tracks hit rate
 - **Time travel** — replay graph state over the past 7 days
 - **Portfolio overlay** — add your positions, see them highlighted on the graph
-- **Scenario engine ("Macro Sim")** — strategic foresight tool: click "Generate Scenario" to produce 2-3 probability-weighted branching scenarios with causal chains, historical calibration, and multi-node shocks. The agent thinks freely first (unconstrained by the graph), then maps impacts to nodes and suggests new nodes/edges for gaps. Apply a branch to see the cascade on the 3D graph. Edit shocks before applying. Export scenarios as JSON.
+- **Scenario engine ("Macro Sim")** — strategic foresight tool: click "Generate Scenario" to produce 2-3 probability-weighted branching scenarios with causal chains, historical calibration, and multi-node shocks. 4-phase multi-agent pipeline (Researcher → Historian → Strategist → Mapper) with economic calendar, options positioning data, and current market context. The agent thinks freely first (unconstrained by the graph), then maps impacts to nodes and suggests new nodes/edges for gaps. Non-linear shock model with stress multiplier for simultaneous shocks. Compare 2 branches side-by-side. Chain follow-up scenarios from branch outcomes. 12-domain news scan for topic diversity. Export as JSON.
 - **Edge discovery** — AI suggests new causal edges from correlation patterns
 - **Causal discovery module** — computationally discovers causal networks from data using PCMCI+, Granger, and RPCMCI algorithms, with DoWhy statistical validation (see [Causal Discovery](#causal-discovery-module) below)
 
@@ -232,7 +232,8 @@ causal-sentiment/
 │   │   │   └── topology_learning.py
 │   │   ├── data_pipeline/
 │   │   │   ├── fred.py
-│   │   │   ├── market.py
+│   │   │   ├── market.py          # + options positioning (IV, put/call, term structure)
+│   │   │   ├── calendar.py        # Economic calendar (FOMC, CPI, NFP, GDP + FRED API)
 │   │   │   ├── reddit.py
 │   │   │   ├── edgar.py
 │   │   │   ├── retry.py
@@ -316,7 +317,8 @@ A: The **[Technical Manual](docs/TECHNICAL_MANUAL.md)** covers every algorithm, 
 - [x] Risk-aware color scheme — red = market-threatening, green = market-friendly (inverted for risk nodes)
 - [x] Agent optimization — ~15 tool calls per run (batch-first, no re-fetching pre-fetched data)
 - [x] 16 bug fixes — LLM error handling/retry/timeout, graph rollback, batch propagation cascade fix, concurrent scheduler guard
-- [x] Scenario engine — strategic foresight agent with 5-phase loop, "generate first, map second" design, multi-shock simulate, graph evolution, export
+- [x] Scenario engine — strategic foresight agent with 4-phase multi-agent loop, "generate first, map second" design, multi-shock simulate, graph evolution, export
+- [x] Scenario intelligence — economic calendar tool, options positioning, non-linear shock model, scenario comparison, scenario chaining, topic diversity (12 domains)
 - [ ] Historical backtesting dashboard with equity curves
 - [ ] User-defined custom graphs (bring your own nodes/edges)
 - [ ] Alerting (email/Slack when anomalies detected)

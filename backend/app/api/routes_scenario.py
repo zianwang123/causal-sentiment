@@ -560,6 +560,8 @@ def _extract_branches(scenario: Scenario) -> list[ScenarioBranchOut]:
 
     branches = []
     for b in scenario.scenarios_json["branches"]:
+        if not isinstance(b, dict):
+            continue
         branches.append(ScenarioBranchOut(
             title=b.get("title", "Untitled"),
             probability=b.get("probability", 0),

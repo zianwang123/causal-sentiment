@@ -1604,6 +1604,7 @@ async def generate_quick_triggers(graph: nx.DiGraph) -> list[dict]:
                 "vulnerability": t.get("vulnerability", ""),
             }
             for t in triggers[:5]
+            if isinstance(t, dict)
         ]
     except Exception as e:
         logger.exception("Quick trigger generation failed: %s", e)
