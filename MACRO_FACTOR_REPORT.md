@@ -639,6 +639,54 @@ Initial shock → VIX ↑ → Vol-targeting strategies deleverage → Forced equ
 ```
 This is why corrections become crashes. Volatility is not just a *symptom* — it is a *cause*.
 
+### Chain 10: Geopolitical Oil Shock → Yield Suppression of Gold
+```
+Geopolitical Risk ↑ → Brent Crude Oil ↑ → CPI ↑ + Breakeven Inflation ↑
+                                        → 10Y Treasury Yield ↑ (inflation premium)
+                                        → Real Yield ↑ (nominal yield rises faster than breakevens)
+                                        → DXY ↑ (rate differential attracts capital)
+                                        → Gold ↓ (yield suppression — bonds at 4.5% vs gold's 0%)
+```
+This is the chain playing out in March 2026 following the US-Iran conflict. Gold does not behave as a simple safe haven when oil-driven inflation pushes bond yields higher. The key mechanism: bonds paying 4.5% with full government backing are the most powerful mechanical suppressor of gold prices. Precious metals trade inversely to oil in the short term through this yield channel.
+
+### Chain 11: The Fiscal Trap → Forced Rate Cuts → Gold Reversal
+```
+Phase 1 — The Doom Loop:
+US Fiscal Deficit ↑ → Treasury Issuance ↑ → 10Y Yield ↑ → Debt Service Cost ↑ → Fiscal Deficit ↑↑
+                   → Debt/GDP ↑ → Term Premium ↑ → 10Y Yield ↑↑ (amplifying)
+
+Phase 2 — The Mathematical Trap:
+  Path A: Fed raises rates to fight oil-driven inflation
+    → Debt service becomes unsustainable ($1T+ annual interest at 4-5% on $9.2T rolling over)
+    → Sovereign credibility questioned → further yield rise → even larger deficit
+  Path B: Fed cuts rates to manage debt burden
+    → Inflation expectations reignite → breakevens surge → gold bid
+    → Dollar weakens → commodity prices rise → more inflation
+
+Phase 3 — The Forced Resolution:
+Market concludes rates MUST come down — not because inflation is beaten,
+but because the debt load leaves no choice:
+  Debt/GDP → Rate Expectations ↓ (fiscal dominance priced in)
+  → Fed Funds Rate ↓ (forced easing)
+    → 10Y Yield ↓ (despite elevated oil)
+    → DXY ↓ (rate differential narrows)
+    → Gold ↑↑ (responding to BOTH persistent inflation AND monetary loosening the debt forced)
+```
+This is the chain professional macro traders are positioning for. The yield suppression mechanism from Chain 10 has a finite lifespan — it persists only as long as the market believes the Fed can raise rates. The moment fiscal dominance is priced in, the suppression reverses: yields fall not because inflation is beaten but because the government cannot afford higher rates. Gold then rises from both channels simultaneously — inflation hedge AND monetary debasement hedge.
+
+### Chain 12: BOJ Normalization → Yen Carry Unwind → Global Vol
+```
+BOJ tightens (rate hike or YCC exit) → USD/JPY ↓ (yen strengthens rapidly)
+                                     → FX Volatility ↑
+                                     → VIX ↑ (Aug 5, 2024: VIX 15 → 65 intraday)
+                                     → Forced selling of US equities/EM funded by yen carry
+                                     → S&P 500 ↓, EM Equities ↓, EM FX ↓
+                                     → Margin calls → More forced selling
+                                     → Gold ↑ (safe-haven rotation)
+                                     → DXY ↓ (carry trade unwind reduces USD demand)
+```
+This chain was proven empirically on August 5, 2024 — the most violent single-day equity move of that year, triggered entirely by a BOJ rate hike and the resulting yen carry trade unwind. It demonstrates that a central bank policy shift in Tokyo can crash equity markets in New York within hours.
+
 ---
 
 ## Causal Edge Matrix
@@ -1273,10 +1321,15 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 4: Geopolitics, Fiscal Policy & Supply Chain
 
-**Geopolitical Risk Index** (15 edges)
+**Geopolitical Risk Index** (20 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
+| Brent Crude Oil | + | Every Middle East/energy-region conflict since 1973 has spiked oil — supply disruption and risk premium |
+| Gold | + | Canonical safe-haven trade — war drives physical and ETF gold buying |
+| DXY | + | Risk-off drives dollar safe-haven bid (except in US-specific political crises) |
+| 10Y Treasury Yield | − | Flight-to-quality bid compresses Treasury yields during geopolitical crises |
+| VIX | + | Geopolitical shocks spike implied equity volatility on same-day |
 | S&P 500 | − | Risk-off repricing on geopolitical escalation |
 | Natural Gas | + | Supply disruption fears (Middle East, Russia) |
 | IG Credit Spread | + | Uncertainty premium widens credit spreads |
@@ -1334,10 +1387,13 @@ This section documents every directed causal edge in the factor graph — approx
 | Healthcare | ± | Sector exposed to regulatory/legislative changes |
 | Lending Standards | + | Banks tighten in uncertain political environment |
 
-**Sanctions Regime** (13 edges)
+**Sanctions Regime** (16 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
+| Brent Crude Oil | + | Iranian/Russian sanctions directly restrict oil supply — the single most important sanctions transmission |
+| Natural Gas | + | Russia sanctions restructured the entire European gas market (Nord Stream, LNG rerouting) |
+| Gold | + | Central bank reserve diversification away from USD post-sanctions drives structural gold buying |
 | EM Sovereign Spread | + | Sanctions increase EM refinancing risk |
 | EM FX Basket | − | Sanctions trigger EM capital flight |
 | EM Equities | − | Sanctioned countries' markets sell off, contagion spreads |
@@ -1388,7 +1444,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Buybacks | − | Regulated firms face restrictions on capital return |
 | VIX | + | Regulatory uncertainty raises equity volatility |
 
-**Fiscal Deficit** (12 edges)
+**Fiscal Deficit** (15 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1404,8 +1460,11 @@ This section documents every directed causal edge in the factor graph — approx
 | IG Credit Spread | + | Government credit risk reprices corporate spreads |
 | GDP Growth | + | Short-term fiscal stimulus supports growth |
 | CPI | + | Fiscal expansion can be inflationary |
+| Rate Expectations | ± | Fiscal dominance — markets price in that unsustainable debt service will eventually FORCE rate cuts regardless of inflation. The "mathematical trap": if rates rise, interest burden becomes unsustainable; if rates fall, inflation reignites. The moment markets conclude rates must come down not because inflation is beaten but because the debt load leaves no choice, rate expectations collapse |
+| Fed Funds Rate | ± | Fiscal dominance constrains the Fed — at extreme deficit levels, aggressive rate hikes become self-defeating (higher rates → higher debt service → larger deficit → more issuance → higher yields → even higher debt service). The Fed loses degrees of freedom |
+| HY Credit Spread | + | Fiscal crowding out — government borrowing competes with corporate credit for capital |
 
-**Debt-to-GDP Ratio** (10 edges)
+**Debt-to-GDP Ratio** (13 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1419,6 +1478,9 @@ This section documents every directed causal edge in the factor graph — approx
 | Fiscal Deficit | + | Debt service costs create self-reinforcing deficits |
 | Financial Conditions | + | Fiscal risk tightens conditions |
 | Bitcoin | + | Alternative asset narrative strengthens on sovereign risk |
+| Rate Expectations | ± | The "mathematical trap" — at 120%+ debt/GDP with $9.2T rolling over annually, markets price in that rates MUST eventually come down not because inflation is beaten but because the debt load leaves no choice. This shifts rate expectations independently of inflation data |
+| Fed Funds Rate | ± | Fiscal dominance — extreme debt/GDP constrains Fed independence. The Fed cannot aggressively fight inflation if doing so triggers a sovereign debt spiral. This is the mechanism that eventually forces rate cuts |
+| IG Credit Spread | + | Higher sovereign debt levels raise the credit risk baseline for all corporate issuers |
 
 **Treasury Issuance** (11 edges)
 
@@ -1959,10 +2021,17 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 7: Volatility & Risk Pricing
 
-**VIX (CBOE Volatility Index)** (17 edges)
+**VIX (CBOE Volatility Index)** (24 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
+| Gold | + | Safe-haven rotation — VIX spikes drive flight into gold (every major vol event shows gold bid) |
+| DXY | + | Dollar safe-haven bid during risk-off — VIX spikes strengthen USD via flight to safety |
+| 10Y Treasury Yield | − | Flight-to-quality Treasury buying compresses yields during equity vol spikes |
+| USD/JPY | − | Yen carry trade unwinds during vol spikes — JPY strengthens, USD/JPY falls (Aug 2024) |
+| NASDAQ | − | Growth/long-duration stocks crushed disproportionately during vol events |
+| Bitcoin | − | Crypto collapses in vol spikes via shared risk appetite and margin calls |
+| Consumer Confidence | − | Equity crashes destroy household wealth and confidence simultaneously |
 | S&P 500 | − | VIX spikes trigger de-risking and forced selling |
 | Put/Call Ratio | + | VIX spikes increase put buying |
 | IG Credit Spread | + | Equity vol spills over to credit markets |
@@ -2075,7 +2144,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Natural Gas | + | Gas prices drive EU energy inflation |
 | Gold | + | European inflation drives global gold demand |
 
-**BOJ Policy** (7 edges)
+**BOJ Policy** (11 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2086,6 +2155,10 @@ This section documents every directed causal edge in the factor graph — approx
 | EM FX Basket | − | BOJ tightening triggers yen carry unwind → EM pressure |
 | MOVE Index | + | BOJ policy shifts create global rate vol |
 | Europe Equities | − | Yen carry unwind hits global equities |
+| VIX | + | BOJ rate hike triggered yen carry unwind → VIX spiked from 15 to 65 intraday (Aug 5, 2024). Proven empirically |
+| S&P 500 | − | Yen carry unwind forces liquidation of US equity positions funded by yen borrowing |
+| USD/JPY | − | Hawkish BOJ strengthens yen — USD/JPY falls. This IS the carry trade mechanism |
+| DXY | − | BOJ tightening strengthens yen, weakens dollar on a relative basis |
 
 **China Credit Impulse** (11 edges)
 
