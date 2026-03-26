@@ -802,7 +802,7 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 1: US Macroeconomic Fundamentals
 
-**Federal Funds Rate** (24 edges)
+**Federal Funds Rate** (25 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -830,6 +830,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Bitcoin | − | Risk-free rate competition reduces speculative appetite |
 | Financial Conditions | + | Rate hikes tighten overall financial conditions |
 | Rate Expectations | + | Current rate anchors forward expectations |
+| Unemployment Rate | ± | Rate hikes slow economy → unemployment rises; rate cuts stimulate → unemployment falls. Operates with 12-18 month lag |
 
 **US CPI Year-over-Year** (9 edges)
 
@@ -845,7 +846,7 @@ This section documents every directed causal edge in the factor graph — approx
 | 10Y Treasury Yield | + | Higher inflation expectations push nominal yields up |
 | PCE Deflator | + | CPI and PCE are co-integrated, CPI leads expectations |
 
-**US GDP Growth** (13 edges)
+**US GDP Growth** (14 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -862,8 +863,9 @@ This section documents every directed causal edge in the factor graph — approx
 | HY Credit Spread | − | Growth reduces default risk for leveraged issuers |
 | EM Equities | + | US growth supports global demand and risk appetite |
 | Fed Funds Rate | + | Strong growth gives Fed room to tighten |
+| EM Sovereign Spread | − | US GDP weakness → global risk-off → EM spreads widen as capital flees to safety |
 
-**Unemployment Rate** (9 edges)
+**Unemployment Rate** (10 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -876,6 +878,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Retail Sentiment | − | Job insecurity reduces risk appetite |
 | Fed Funds Rate | − | Fed eases to support employment mandate |
 | Fiscal Deficit | + | Automatic stabilizers (unemployment benefits) widen deficit |
+| S&P 500 | − | Rising unemployment signals earnings risk and recession — every major unemployment spike coincides with equity selloff |
 
 **Manufacturing PMI** (8 edges)
 
@@ -911,7 +914,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Services PMI | + | Consumer spending is primarily on services |
 | Fund Flows | + | Confident consumers increase investment allocations |
 
-**Wage Growth** (6 edges)
+**Wage Growth** (7 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -921,6 +924,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Rate Expectations | + | Wage-price spiral risk shifts Fed expectations hawkish |
 | CPI | + | Labor costs pass through to consumer prices |
 | Consumer Confidence | + | Rising wages boost consumer outlook |
+| Fed Funds Rate | + | Wage growth is a core input to the Fed's inflation assessment — persistent wage pressure forces hawkish policy |
 
 **Jobless Claims (NEW)** (7 edges)
 
@@ -1170,7 +1174,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Consumer Confidence | + | Normal curve signals healthy economy |
 | HY Credit Spread | − | Curve steepening reduces recession/default expectations |
 
-**IG Credit Spread** (10 edges)
+**IG Credit Spread** (11 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1184,8 +1188,9 @@ This section documents every directed causal edge in the factor graph — approx
 | Private Credit | + | Stress reprices private lending risk |
 | Earnings Momentum | − | Higher corporate funding costs compress margins |
 | Revenue Growth | − | Credit tightening reduces economic activity |
+| Fund Flows | − | IG spread widening triggers bond fund redemptions and capital flight from credit |
 
-**HY Credit Spread** (12 edges)
+**HY Credit Spread** (14 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1201,6 +1206,8 @@ This section documents every directed causal edge in the factor graph — approx
 | EM Sovereign Spread | + | HY stress signals global risk aversion |
 | Regional Banks | − | Leveraged loan portfolios deteriorate |
 | Energy Sector | − | Energy is the largest HY sector |
+| IG Credit Spread | + | HY widening signals broader credit stress that cascades to investment grade (every credit crisis since 1998) |
+| GDP Growth | − | Financial accelerator — wider HY → tighter conditions → weaker growth → wider HY (self-reinforcing in crises) |
 
 **Real Yield (TIPS)** (12 edges)
 
@@ -1268,7 +1275,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Consumer Confidence | + | Housing activity signals economic health |
 | Lumber/Timber | + | Direct input demand |
 
-**Home Prices (Case-Shiller)** (9 edges)
+**Home Prices (Case-Shiller)** (10 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1281,6 +1288,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Financials | + | Mortgage portfolio values increase |
 | Regional Banks | + | Mortgage collateral values improve |
 | Retail Sentiment | + | Household wealth drives risk appetite |
+| Lending Standards | ± | Home prices affect collateral values (LTV ratios) which determine bank willingness to lend — rising prices loosen, falling prices tighten |
 
 **Mortgage Rate (30Y Fixed)** (8 edges)
 
@@ -1310,7 +1318,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Private Credit | + | Private CRE lenders face writedowns |
 | CDS Spreads | + | Bank CDS widens on CRE exposure |
 
-**Financial Conditions Index (FCI)** (11 edges)
+**Financial Conditions Index (FCI)** (17 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1325,8 +1333,14 @@ This section documents every directed causal edge in the factor graph — approx
 | Buybacks | − | Higher borrowing costs reduce buyback funding |
 | Lending Standards | + | Banks respond to tight FCI by tightening further |
 | Private Credit | + | FCI tightening reprices private lending |
+| GDP Growth | − | Tighter financial conditions constrain economic activity — the textbook monetary transmission endpoint |
+| S&P 500 | − | Tighter conditions suppress equity valuations and risk appetite |
+| HY Credit Spread | + | FCI tightening pushes out credit spreads across the risk spectrum |
+| Housing Starts | − | Tighter conditions reduce mortgage credit availability and housing demand |
+| Lending Standards | + | FCI tightening and bank lending tightening are co-reinforcing |
+| Financials | − | Tight financial conditions hit bank earnings, credit quality, and capital markets revenue |
 
-**Bank Lending Standards** (10 edges)
+**Bank Lending Standards** (11 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1340,6 +1354,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Consumer Confidence | − | Credit availability affects sentiment |
 | Revenue Growth | − | Less credit = less economic activity |
 | Private Credit | + | Shadow lending grows when banks retreat |
+| Financial Conditions | + | Bank lending tightening IS financial conditions tightening — lending standards are a core FCI component |
 
 **Bank Reserves** (7 edges)
 
@@ -1421,7 +1436,7 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 4: Geopolitics, Fiscal Policy & Supply Chain
 
-**Geopolitical Risk Index** (20 edges)
+**Geopolitical Risk Index** (21 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1445,8 +1460,9 @@ This section documents every directed causal edge in the factor graph — approx
 | Retail Sentiment | − | Fear drives retail investor risk aversion |
 | Consumer Confidence | − | Geopolitical fears weigh on economic outlook |
 | Financial Conditions | + | Geopolitical stress tightens conditions |
+| Sanctions | + | Geopolitical escalation triggers sanctions imposition — every major conflict since 2014 has been followed by sanctions |
 
-**Trade Policy Uncertainty** (18 edges)
+**Trade Policy Uncertainty** (19 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1468,8 +1484,9 @@ This section documents every directed causal edge in the factor graph — approx
 | Baltic Dry Index | − | Reduced trade volume depresses shipping rates |
 | Iron Ore | − | Trade disruption reduces industrial commodity demand |
 | Consumer Confidence | − | Trade uncertainty weighs on economic outlook |
+| Manufacturing PMI | − | Tariffs directly hit manufacturing through input cost pressure and supply chain disruption (2018-19, 2025) |
 
-**US Political Risk** (13 edges)
+**US Political Risk** (14 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1486,8 +1503,9 @@ This section documents every directed causal edge in the factor graph — approx
 | REITs | − | Policy uncertainty depresses real estate investment |
 | Healthcare | ± | Sector exposed to regulatory/legislative changes |
 | Lending Standards | + | Banks tighten in uncertain political environment |
+| Sanctions | ± | US political decisions drive the sanctions regime — executive orders, congressional authorization, diplomatic leverage |
 
-**Sanctions Regime** (16 edges)
+**Sanctions Regime** (17 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1507,6 +1525,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Bitcoin | + | Sanctions evasion narrative drives crypto demand |
 | Europe Equities | − | European firms exposed to sanctioned trade partners |
 | Iron Ore | ± | Supply disruption vs. demand destruction |
+| CPI | + | Sanctions disrupt supply chains and commodity flows → cost-push inflation (Russia sanctions → energy/food prices) |
 
 **Climate Policy** (15 edges)
 
@@ -1616,7 +1635,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Semiconductors | + | CHIPS Act and defense spending benefit semis |
 | Treasury Issuance | + | Spending requires Treasury financing |
 
-**Supply Chain Pressure Index** (15 edges)
+**Supply Chain Pressure Index** (16 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1635,6 +1654,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Baltic Dry Index | + | Shipping bottlenecks raise freight rates |
 | China PMI | − | Supply chain stress signals China production disruption |
 | Rate Expectations | + | Supply-side inflation complicates Fed easing |
+| VIX | + | Supply chain disruptions spike equity volatility — COVID shipping crisis, Suez blockage, semiconductor shortages |
 
 **Baltic Dry Index** (10 edges)
 
@@ -1668,7 +1688,7 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 5: Commodities & Currencies
 
-**Brent Crude Oil** (18 edges)
+**Brent Crude Oil** (19 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1690,6 +1710,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Wheat | + | Energy costs affect agricultural production |
 | Soybeans | + | Fertilizer and transport costs rise with oil |
 | Manufacturing PMI | − | Higher energy costs compress manufacturing margins |
+| Fed Funds Rate | ± | Oil shocks directly move Fed policy — 1973/1979 forced accommodation, 2022 forced tightening. Sign depends on growth vs inflation regime |
 
 **Gold** (7 edges)
 
@@ -1734,7 +1755,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Uranium | + | Gas price spikes boost nuclear competitiveness |
 | Breakeven Inflation | + | Gas-driven inflation expectations |
 
-**Wheat** (8 edges)
+**Wheat** (9 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1746,6 +1767,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Soybeans | + | Agricultural commodity complex co-movement |
 | EM FX Basket | − | Food-importing EM currencies weaken |
 | India Growth | − | India is a major food importer; price spikes hurt growth |
+| EU HICP | + | Food prices are a significant component of European inflation — wheat spike in 2022 drove EU food CPI |
 
 **Soybeans** (8 edges)
 
@@ -1830,7 +1852,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Breakeven Inflation | − | Strong dollar is deflationary for US imports |
 | Financial Conditions | + | Strong dollar tightens global financial conditions |
 
-**EUR/USD** (7 edges)
+**EUR/USD** (8 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1841,6 +1863,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Gold | + | EUR weakness = USD strength headwind, but EUR gold demand rises |
 | EM FX Basket | + | EUR moves affect global FX basket dynamics |
 | ECB Policy Rate | + | EUR weakness may prompt ECB intervention |
+| FX Volatility | + | EUR is 57% of DXY — EUR/USD moves are the dominant source of developed-market FX volatility |
 
 **USD/JPY** (8 edges)
 
@@ -1882,7 +1905,7 @@ This section documents every directed causal edge in the factor graph — approx
 | US Political Risk | ± | GBP/USD moves on US policy changes |
 | FX Volatility | + | Cable is a major vol contributor |
 
-**EM FX Basket** (10 edges)
+**EM FX Basket** (12 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1896,12 +1919,14 @@ This section documents every directed causal edge in the factor graph — approx
 | China Equities | + | EM FX health signals China demand spillover |
 | Global Trade Volume | + | EM FX strength indicates trade health |
 | FX Volatility | − | Stable EM FX reduces overall FX vol |
+| VIX | + | EM currency crises spike global volatility — 1997 Asian crisis, 1998 Russia, 2018 Turkey all spiked VIX |
+| Financial Conditions | + | EM stress tightens global financial conditions via funding cost channel and risk repricing |
 
 ---
 
 ### Category 6: Equities, Sectors & Fundamentals
 
-**S&P 500** (18 edges)
+**S&P 500** (20 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1923,8 +1948,10 @@ This section documents every directed causal edge in the factor graph — approx
 | IPO Issuance | + | Bull markets enable IPO issuance |
 | ETF Flows | + | Performance chasing drives passive inflows |
 | Financial Conditions | − | Rising equities ease financial conditions |
+| Financials | ± | Broad market moves drag/lift bank stocks — financials are 13% of S&P by weight |
+| EM FX Basket | ± | US equity selloff triggers EM risk-off capital flight; rally attracts EM flows |
 
-**NASDAQ Composite** (7 edges)
+**NASDAQ Composite** (8 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1935,6 +1962,7 @@ This section documents every directed causal edge in the factor graph — approx
 | PE Valuations | + | Tech multiples drive aggregate PE |
 | Retail Sentiment | + | NASDAQ is the retail investor favorite index |
 | Equity Risk Premium | − | NASDAQ rally compresses overall ERP |
+| Russell 2000 | ± | NASDAQ risk-on/off sentiment spills into small-cap growth names — high beta relationship |
 
 **Tech Sector** (6 edges)
 
@@ -1947,7 +1975,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Revenue Growth | + | Tech revenue growth exceeds other sectors |
 | Buybacks | + | Tech generates largest buyback volumes |
 
-**Energy Sector** (5 edges)
+**Energy Sector** (6 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -1956,6 +1984,7 @@ This section documents every directed causal edge in the factor graph — approx
 | HY Credit Spread | − | Healthy energy sector compresses HY spreads |
 | Earnings Momentum | + | Energy earnings are oil-price-driven |
 | Natural Gas | + | Gas producers are in the energy sector |
+| CPI | + | Energy sector prices (gasoline, electricity, natural gas) feed directly into CPI basket (~8% weight) |
 
 **Financials Sector** (7 edges)
 
@@ -1997,7 +2026,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Housing Starts | + | REIT demand signals housing market health |
 | Mortgage Rate | − | REIT returns inversely correlated with mortgage rates |
 
-**Regional Banks** (6 edges)
+**Regional Banks** (8 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2007,6 +2036,8 @@ This section documents every directed causal edge in the factor graph — approx
 | Private Credit | + | Regional bank retreat expands private credit market |
 | Housing Starts | − | Regional bank stress reduces mortgage lending |
 | HY Credit Spread | + | Regional bank stress signals broader credit risk |
+| Money Market Fund Flows | + | Regional bank stress drives deposit flight into money market funds — $500B in one week during SVB (March 2023) |
+| S&P 500 | − | Regional bank stress drags broad market via systemic contagion fears (SVB → S&P −5% in days) |
 
 **EM Equities** (5 edges)
 
@@ -2061,7 +2092,7 @@ This section documents every directed causal edge in the factor graph — approx
 | China Equities | ± | Export controls create winners/losers |
 | Copper | + | Chip fabrication requires copper |
 
-**Earnings Momentum** (10 edges)
+**Earnings Momentum** (11 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2075,6 +2106,7 @@ This section documents every directed causal edge in the factor graph — approx
 | IG Credit Spread | − | Earnings health compresses credit spreads |
 | Revenue Growth | + | Earnings and revenue are co-integrated |
 | Russell 2000 | + | Small-cap earnings drive Russell returns |
+| Unemployment Rate | − | Earnings misses → corporate cost-cutting → layoffs → rising unemployment (the real economy feedback) |
 
 **PE Valuations (Shiller CAPE)** (6 edges)
 
@@ -2087,7 +2119,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Buybacks | − | High valuations reduce buyback cost-effectiveness |
 | IPO Issuance | + | High valuations incentivize companies to go public |
 
-**Revenue Growth** (6 edges)
+**Revenue Growth** (7 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2097,6 +2129,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Buybacks | + | Revenue growth funds capital return programs |
 | GDP Growth | + | Corporate revenue and GDP are co-integrated |
 | Wage Growth | + | Revenue growth enables wage increases |
+| HY Credit Spread | + | Revenue weakness for leveraged issuers signals credit stress → HY spreads widen |
 
 **Equity Risk Premium** (4 edges)
 
@@ -2121,7 +2154,7 @@ This section documents every directed causal edge in the factor graph — approx
 
 ### Category 7: Volatility & Risk Pricing
 
-**VIX (CBOE Volatility Index)** (24 edges)
+**VIX (CBOE Volatility Index)** (25 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2149,8 +2182,9 @@ This section documents every directed causal edge in the factor graph — approx
 | ETF Flows | − | Vol triggers passive fund redemptions |
 | Russell 2000 | − | Small caps most sensitive to vol |
 | EM Equities | − | VIX spikes trigger EM risk-off |
+| Lending Standards | + | Vol spikes cause banks to tighten lending as risk models and VAR limits trigger deleveraging |
 
-**MOVE Index (Bond Volatility)** (11 edges)
+**MOVE Index (Bond Volatility)** (12 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2165,6 +2199,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Term Premium | + | Rate vol raises term premium |
 | FX Volatility | + | Rate vol transmits to currency markets |
 | Treasury Issuance | − | High MOVE makes auctions more uncertain |
+| Mortgage Rate | + | Bond market volatility widens MBS spreads → higher mortgage rates (convexity hedging feedback) |
 
 **Put/Call Ratio** (5 edges)
 
@@ -2348,7 +2383,7 @@ This section documents every directed causal edge in the factor graph — approx
 | Margin Debt | + | Bullish retail increases margin borrowing |
 | Put/Call Ratio | − | Bullish retail reduces put buying |
 
-**Fund Flows (ICI Weekly)** (8 edges)
+**Fund Flows (ICI Weekly)** (10 edges)
 
 | Target | Dir | Mechanism |
 |--------|-----|-----------|
@@ -2360,6 +2395,8 @@ This section documents every directed causal edge in the factor graph — approx
 | Russell 2000 | + | Small-cap fund flows drive Russell |
 | PE Valuations | + | Inflows push up multiples |
 | ETF Flows | + | Fund flows and ETF flows are co-integrated |
+| S&P 500 | ± | Fund inflows provide buying pressure that lifts equities; outflows create forced selling (mechanical) |
+| Gold | ± | Risk-off fund rotation drives flows into gold ETFs; risk-on drives outflows |
 
 **Institutional Positioning (CFTC COT)** (7 edges)
 
