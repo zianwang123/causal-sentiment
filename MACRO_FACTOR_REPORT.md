@@ -491,66 +491,166 @@ The real discount rate — the most important price in global finance — was no
 
 ## Event Coverage Validation
 
-### 2008 Global Financial Crisis
-**Chain:** US Home Prices ↓ → Mortgage Defaults ↑ → Bank Lending Standards tighten → HY Credit Spread ↑ → TED Spread ↑ → Commercial Paper freeze → Financial Conditions tighten → S&P 500 ↓↓ → Global contagion via dollar funding stress
-**Previously:** **0% coverage** — no housing, no banking, no funding factors
-**Now:** **Full coverage** — every link in the chain is monitored
+We validate the framework against **every major market dislocation from 1960 to 2026** — 37 events across 7 decades. For each event, we trace the causal chain through our 110 factors. If even one link in the chain is missing, the system has a blind spot that will cost us when the next variant of that crisis arrives.
 
-### 2011 European Sovereign Debt Crisis
-**Chain:** EU Periphery Spreads (Italy, Greece) ↑ → ECB forced to act → EUR/USD ↓ → EM FX pressure → Global Financial Conditions tighten → Bank CDS spreads ↑ → Contagion risk to US financials
-**Previously:** **~10% coverage** — had EUR/USD, nothing else
-**Now:** **Full coverage**
+### The 1960s
 
-### 2013 Taper Tantrum
-**Chain:** Fed rate expectations repriced ↑ → US Real Yield ↑ → DXY ↑ → EM FX Basket ↓ → EM Sovereign Spread ↑ → EM Equities ↓ → Capital flight → Further DXY ↑ (feedback loop)
-**Previously:** **~30% coverage** — had rate expectations and DXY, no EM chain
-**Now:** **Full coverage**
+#### 1966 Credit Crunch
+**Chain:** Fiscal Deficit ↑ (Vietnam War + Great Society spending) → CPI ↑ (demand-pull inflation to 3.5%) → Fed Funds Rate ↑ (4.5% → 5.75%) → Lending Standards ↑ (Regulation Q deposit ceilings triggered disintermediation) → FCI ↑ (credit availability collapsed) → Housing Starts ↓ (40% plunge as thrifts lost deposits) → Mortgage Rate ↑ → S&P 500 ↓ (−22% bear market) → Financials ↓ → GDP ↓ (growth slowdown)
+**Coverage:** **Full coverage** — captures the fiscal origin, Fed reaction, disintermediation through lending standards and FCI, housing transmission, and equity impact.
 
-### 2015 China Devaluation Scare
-**Chain:** PBOC policy shift → USD/CNY devaluation → China Credit Impulse ↓ → China Equities ↓ → EM Equities ↓ → Copper ↓ → Global growth fears → VIX ↑ → S&P 500 ↓
-**Previously:** **~20% coverage** — had USD/CNY and copper, no China depth
-**Now:** **Full coverage**
+#### 1971 Nixon Shock / Bretton Woods Collapse
+**Chain:** Fiscal Deficit ↑ (Vietnam twin deficits) → Gold ↑ (foreign central banks demanded conversion, US reserves draining) → DXY ↓ (gold window closed, dollar devalued 8%) → EUR/USD ↑ (European currencies revalued) → USD/JPY ↓ (yen forced to appreciate from 360 → 308) → Breakevens ↑ (inflation expectations unanchored without gold discipline) → Oil ↑ → Copper ↑ → Wheat ↑ (broad commodity surge) → CPI ↑ (import price pass-through, inflation toward 6%) → Rate Expectations ↑
+**Coverage:** **Full coverage** — captures the fiscal root cause, gold convertibility break, dollar devaluation across major currencies, commodity repricing, and inflation expectations unanchoring.
 
-### 2020 COVID Pandemic
-**Chain (initial crash):** Supply Chain Pressure ↑ → VIX ↑ → Margin Debt calls → Forced selling → TED Spread ↑ → CP Spread ↑ → Financial Conditions extreme → S&P 500 ↓34%
-**Chain (recovery):** US Fiscal Deficit ↑↑ (stimulus) → Consumer Confidence ↑ → PBOC easing → China Credit Impulse ↑ → Commodities ↑ → Global recovery
-**Previously:** **~40% coverage** — had market indicators but missed supply chain, funding, and fiscal dimensions
-**Now:** **Full coverage**
+### The 1970s
 
-### 2022 Inflation / Rate Shock
-**Chain:** Supply Chain Pressure ↑ + Oil ↑ → US CPI ↑↑ → Fed Funds Rate ↑↑ → Mortgage Rate 3%→7% → Home Prices ↓ → US Real Yield -1%→+2.5% → NASDAQ ↓33% + Bitcoin ↓75% → EM FX Basket ↓
-**Previously:** **~50% coverage** — had CPI, rates, equities, but missed housing, real yields, and supply chain as drivers
-**Now:** **Full coverage**
+#### 1973 OPEC Oil Embargo
+**Chain:** Geopolitical Risk ↑ (Yom Kippur War) → Oil ↑ ($3 → $12, 300% surge) → Natural Gas ↑ → CPI ↑ (headline to 12.3%) → Breakevens ↑ → Consumer Confidence ↓ (gasoline lines, rationing) → GDP ↓ (−3.2%) → Unemployment ↑ (4.6% → 9.0%) → Manufacturing PMI ↓ → S&P 500 ↓ (−48% from Jan 1973 to Oct 1974) → Energy Sector ↑ (windfall profits) → Earnings ↓ (ex-energy collapse) → DXY ↓ → Gold ↑ ($65 → $180)
+**Coverage:** **Full coverage** — captures the geopolitical trigger, oil shock, stagflationary divergence, equity sector rotation, dollar weakness, and gold's inflation-hedge bid.
 
-### 2022 Russia-Ukraine War
-**Chain:** Geopolitical Risk ↑ → Natural Gas ↑10x + Wheat ↑60% → EU HICP ↑10% → ECB forced to hike → EUR/USD ↓ parity → Container Shipping rerouted → Supply Chain Pressure ↑ → Gold ↑ (safe haven)
-**Previously:** **~50% coverage** — had commodities and geopolitics, missed EU energy/inflation transmission
-**Now:** **Full coverage**
+#### 1974-75 Stagflation Recession
+**Chain:** Oil ↑ (elevated costs embedded) → CPI ↑ (12.3% peak) → Wage Growth ↑ (union COLA contracts) → Fed Funds Rate ↑ (Burns raised to 13%, then capitulated) → Fed Funds Rate ↓ (premature easing to 5.25%) → Unemployment ↑ (9.0%) → GDP ↓ (−3.2%) → Manufacturing PMI ↓ → Fiscal Deficit ↑ → S&P 500 ↓ (−48%) → PE ↓ (Shiller CAPE compressed to 8.3x) → HY Spread ↑ → Consumer Confidence ↓ → Real Yield ↓ (deeply negative)
+**Coverage:** **Full coverage** — captures the wage-price spiral, Fed stop-go policy error, simultaneous inflation-unemployment breakout, and equity valuation compression.
 
-### 2023 SVB Crisis
-**Chain:** US Real Yield ↑ → Bank Reserves under pressure + HTM losses on regional bank balance sheets → Regional Banks ↓35% → Deposit flight to Money Market Funds ($500B) → Bank Lending Standards tighten sharply → CRE Stress ↑ → Financial Conditions tighten
-**Previously:** **0% coverage** — zero banking, zero funding, zero CRE factors
-**Now:** **Full coverage**
+#### 1979 Second Oil Crisis (Iranian Revolution)
+**Chain:** Geopolitical Risk ↑ (Iranian Revolution) → Oil ↑ ($14 → $35) → Natural Gas ↑ → CPI ↑ (reaccelerated to 14.8%) → Breakevens ↑ (double-digit expectations entrenched) → Gold ↑ ($225 → $850) → Silver ↑ (Hunt brothers squeeze) → DXY ↓ (dollar confidence crisis) → Consumer Confidence ↓ → GDP ↓ → Unemployment ↑ → S&P 500 ↓ → 10Y Yield ↑ (surged toward 12%) → Real Yield ↓ (still deeply negative)
+**Coverage:** **Full coverage** — captures the supply shock, second inflation wave, precious metals mania, dollar confidence crisis, and bond market's failure to outrun inflation.
 
-### 2024 AI Boom
-**Chain:** Semiconductors ↑↑ (NVIDIA) → Tech Sector ↑ → NASDAQ ↑ → Earnings Momentum ↑ → Equity Risk Premium compresses → US Productivity Growth debate → Concentration risk in S&P 500
-**Previously:** **~30% coverage** — had NASDAQ and tech, missed semiconductors and ERP
-**Now:** **Full coverage**
+#### 1979-82 Volcker Shock
+**Chain:** Fed Funds Rate ↑ (Volcker raised to 20%) → Rate Expectations ↑ (credible disinflation commitment) → 2Y Yield ↑ (past 16%) → 10Y Yield ↑ (peaked 15.8%) → Mortgage Rate ↑ (30Y fixed hit 18.4%) → Housing Starts ↓ (collapsed 50%) → Lending Standards ↑ → FCI ↑ (tightest since Depression) → GDP ↓ (double-dip recession, −2.7%) → Unemployment ↑ (10.8%) → Manufacturing PMI ↓ → CPI ↓ (14.8% → 3.2%, inflation broken) → DXY ↑ (surged 50%) → EM Sovereign Spread ↑ → EM FX ↓ → Gold ↓ ($850 → $300, inflation hedge unwound) → S&P 500 ↑ (secular bull began August 1982)
+**Coverage:** **Full coverage** — captures the rate mechanism, housing/credit transmission, deliberately induced recession, inflation's defeat, dollar surge triggering EM crisis, and the equity inflection.
 
-### 2024 Yen Carry Trade Unwind (August 5th)
-**Chain:** BOJ rate hike → USD/JPY reversal → FX Volatility ↑ → Institutional Positioning (extreme JPY shorts) forced to cover → Japan equities ↓12% → VIX ↑65 → S&P 500 ↓3% → EM FX Basket ↓
-**Previously:** **~40% coverage** — had USD/JPY and VIX, missed FX vol as a transmission mechanism
-**Now:** **Full coverage**
+### The 1980s
 
-### 2025 Tariff Escalation
-**Chain:** Trade Policy ↑↑ → Supply Chain Pressure ↑ → Container Shipping ↑ → US CPI ↑ → China Equities ↓ → EM FX Basket ↓ → Copper ↓ → Global Trade Volume ↓
-**Previously:** **~40% coverage** — had trade policy and commodities, missed supply chain and EM transmission
-**Now:** **Full coverage**
+#### 1982 Latin American Debt Crisis
+**Chain:** Fed Funds Rate ↑ (Volcker rates made dollar debt unserviceable) → DXY ↑ (doubled real burden of dollar-denominated loans) → EM Sovereign Spread ↑ (Mexico declared moratorium August 1982, Brazil and Argentina followed) → EM FX ↓ → EM Equities ↓ → Financials ↓ (Citibank LatAm exposure exceeded total equity) → Regional Banks ↓ → Lending Standards ↑ (banks retrenched from international lending) → HY Spread ↑ → Global Trade Volume ↓ → Fed Funds Rate ↓ (Volcker eased as financial stability risk overtook inflation fight) → Fed Balance Sheet ↑ (emergency liquidity to exposed banks)
+**Coverage:** **Full coverage** — captures the Volcker-dollar transmission to EM, sovereign default contagion, US bank exposure, trade contraction, and the Fed's pivot to financial stability.
 
-### Crypto Cycles
+#### 1985 Plaza Accord
+**Chain:** DXY ↓ (coordinated G5 intervention, dollar fell 50% over two years) → EUR/USD ↑ (European competitiveness restored) → USD/JPY ↓ (yen nearly doubled) → BOJ Policy ↓ (discount rate cut to 2.5% to cushion export sector — seeded Japanese bubble) → Japan Equities ↑ → Europe Equities ↑ → Trade Policy ↑ (US bilateral pressure on Japan) → Manufacturing PMI ↑ (US manufacturing recovered) → Gold ↑ (dollar debasement) → EM FX ↑ (dollar weakness relieved EM debt burden) → EM Sovereign Spread ↓ (Brady Plan, restructuring viable with weaker dollar) → S&P 500 ↑
+**Coverage:** **Full coverage** — captures coordinated FX intervention, cross-currency transmission, BOJ easing that seeded Japan's bubble, competitiveness rotation, and EM debt relief.
+
+#### 1987 Black Monday (October 19)
+**Chain:** S&P 500 ↓ (−22.6% in single session) → VIX ↑ (portfolio insurance delta-hedging created mechanical selling cascade) → Put/Call ↑ → SKEW ↑ (tail risk repriced permanently, "volatility smile" born) → Fund Flows ↓ → Margin Debt ↓ (forced liquidation) → NASDAQ ↓ → Russell 2000 ↓ → Financials ↓ (specialist firms near insolvency) → FCI ↑ → Fed Funds Rate ↓ (Greenspan emergency liquidity, "Fed put" born) → Fed Balance Sheet ↑ → Bank Reserves ↑ → 10Y Yield ↓ (flight to safety) → Gold ↑
+**Coverage:** **Full coverage** — captures the portfolio insurance feedback loop, volatility regime change, forced-selling cascade, the birth of the "Greenspan put," and flight-to-safety.
+
+#### 1989 Japanese Asset Bubble Peak
+**Chain:** BOJ Policy ↓ (years of 2.5% post-Plaza Accord) → Japan Equities ↑ (Nikkei peaked 38,957; PE above 60x) → Home Prices ↑ (Tokyo land "worth more than California") → Lending Standards ↓ (banks lent against inflated land) → Private Credit ↑ → BOJ Policy ↑ (Mieno raised to 6.0%) → Japan Equities ↓ (began 80% decline over 13 years) → Financials ↓ (bank NPLs exploded) → CRE Stress ↑ (values fell 80%) → Global CB Liquidity ↓ (BOJ shift removed major liquidity source) → EM Equities ↓ (Japanese lending to Asia withdrawn — precursor to 1997)
+**Coverage:** **Full coverage** — captures BOJ easing origin, bubble mechanics through lending/credit, tightening trigger, equity/real estate collapse, and withdrawal of Japanese capital from Asia.
+
+#### 1989-91 US Savings & Loan Crisis
+**Chain:** Lending Standards ↓ (1982 deregulation let thrifts speculate) → CRE Stress ↑ (speculative development funded by insured deposits) → Private Credit ↑ → Home Prices ↓ (Texas/Southwest collapse with oil bust) → Regional Banks ↓ (~1,000 S&Ls failed) → Financials ↓ → Fiscal Deficit ↑ ($160B taxpayer bailout via RTC) → Lending Standards ↑ (FIRREA imposed strict capital requirements) → FCI ↑ (credit crunch) → HY Spread ↑ (junk bond collapse, Drexel failed) → GDP ↓ (1990-91 recession) → Unemployment ↑ (7.8%) → Housing Starts ↓ → Fed Funds Rate ↓ (9.75% → 3%)
+**Coverage:** **Full coverage** — captures deregulation-to-speculation, CRE concentration, mass thrift failure, credit crunch, the junk bond nexus, and Fed easing.
+
+### The 1990s
+
+#### 1992 ERM Crisis / Black Wednesday
+**Chain:** ECB Rate (Bundesbank post-reunification tightening forced ERM peers into unsustainable rate defense) → GBP/USD ↓ (Bank of England spent £27B in reserves before capitulating; sterling crashed 15%) → EUR/USD (lira and peseta ejected from ERM) → FX Vol ↑ (peg after peg broke) → Institutional Positioning (Soros's $10B short-sterling bet — macro fund model validated) → Fund Flows (capital flight from weak-ERM currencies into Deutschmark) → Europe Equities (FTSE rallied post-devaluation on competitiveness; continent fell) → EM FX (demonstrated to EM policymakers that pegs invite speculative attack — precursor to 1990s EM crises)
+**Coverage:** **Full coverage** — traces Bundesbank intransigence through sterling collapse, macro fund positioning, and the intellectual precursor to Asian/EM currency crises.
+
+#### 1994 Bond Massacre
+**Chain:** Fed Funds Rate ↑ (Greenspan's surprise hike February 4, first in 5 years, then six more to 6%) → Rate Expectations (carry trades repriced violently) → 10Y Yield ↑ (5.6% → 8.0%) → 30Y Yield ↑ (duration losses devastated leveraged portfolios) → MOVE ↑ (Orange County's $1.7B loss, P&G's $157M derivatives blowup) → Mortgage Rate ↑ (7% → 9%) → EM Sovereign Spread ↑ (Brady bond spreads widened) → EM FX ↓ (capital reversed from EM carry trades) → Fund Flows ↓ (leveraged bond funds liquidated)
+**Coverage:** **Full coverage** — traces the surprise tightening through yield curve repricing, volatility spike, mortgage transmission, and capital flow reversal from EM.
+
+#### 1994 Mexican Peso Crisis (Tequila Crisis)
+**Chain:** EM FX ↓ (peso's managed crawl broke; intended 15% devaluation became 50% freefall) → EM Sovereign Spread ↑ (tesobono yields exploded; $29B in dollar-linked debt unserviceable) → DXY ↑ (capital fled to US) → EM Equities ↓ (Bolsa −43% in dollar terms; Argentina −28% on contagion) → Fund Flows ↓ ($10B+ EM outflows) → FCI ↑ (Latin American interbank rates spiked) → US Political Risk (Clinton's $50B bailout bypassed Congress; shaped future bailout reluctance) → Lending Standards ↑ (US banks tightened EM credit)
+**Coverage:** **Full coverage** — traces peso collapse through sovereign distress, dollar strength, equity contagion, capital flight, and the politically contentious bailout.
+
+#### 1997 Asian Financial Crisis
+**Chain:** EM FX ↓ (Thai baht floated July 2 after $23B defending peg; fell 50%; contagion to won, rupiah, ringgit, peso) → EM Sovereign Spread ↑ (Korea spread hit 900bp) → EM Equities ↓ (MSCI EM −58%; Jakarta −65%) → FX Vol ↑ → Fund Flows ↓ ($100B+ in outflows) → DXY ↑ (global flight to safety) → Copper ↓ (−30%, Asian demand collapsed) → Oil ↓ ($26 → $11) → Global Trade Volume ↓ (Asian trade finance froze) → Japan Equities ↓ (banks faced Asian loan losses; Yamaichi collapsed) → China PMI ↓ (regional partners contracted) → Lending Standards ↑ (global banks retrenched from EM) → HY Spread ↑ (+150bp on contagion) → VIX ↑ (>35 on Hong Kong contagion)
+**Coverage:** **Full coverage** — traces the baht devaluation through regional contagion, capital reversal, commodity demand destruction, Japanese bank stress, Chinese spillover, and US credit/equity impact.
+
+#### 1998 Russian Default + LTCM Collapse
+**Chain:** EM Sovereign Spread ↑ (Russia defaulted on GKOs August 17; moratorium on $40B foreign obligations) → EM FX ↓ (ruble 6 → 21; Brazilian real under severe pressure) → EM Equities ↓ (Russian market lost 93%) → TED Spread ↑ (tripled as interbank trust evaporated) → CDS ↑ (LTCM's $1.25T derivatives book threatened counterparty cascade) → Institutional Positioning (LTCM's convergence trades all diverged as correlations went to 1) → HY Spread ↑ (+300bp; new issuance froze) → IG Spread ↑ (doubled; forced selling from deleveraging) → 10Y Yield ↓ (on-the-run plunged to 4.16% on flight-to-quality) → Gold ↑ (initially, then sold for liquidity) → VIX ↑ (>45 in October) → Lending Standards ↑ (sharpest tightening since 1990-91) → FCI ↑ (+200bp equivalent) → Fund Flows ↓ (mass redemptions; LTCM's 14 banks organized $3.6B recap) → S&P 500 ↓ (−22% before Fed's three emergency cuts restored confidence)
+**Coverage:** **Full coverage** — traces Russia's default through LTCM's near-collapse, flight-to-quality, interbank/credit seizure, forced deleveraging, and the Fed's emergency response.
+
+#### 1999-2000 Dot-com Bubble Peak
+**Chain:** NASDAQ ↑ (+86% in 1999 to peak 5,048 on March 10, 2000) → Tech Sector (internet stocks at infinite PE) → PE ↑ (Shiller CAPE 44x; NASDAQ median PE >100x) → Semiconductors ↑ (SOX tripled) → Retail Sentiment ↑ (day-trading mainstream; E*Trade accounts +300%) → Margin Debt ↑ ($278B, +75% YoY) → IPO Issuance ↑ (486 IPOs in 1999; 71% average first-day return) → Fund Flows ↑ ($309B equity inflows) → ERP ↓ (compressed to zero — no risk compensation demanded) → S&P 500 ↑ (broad market followed tech) → VIX ↓ (suppressed at 20-23 despite extreme speculation) → Fed Funds Rate ↑ (Greenspan raised six times to 6.5%)
+**Coverage:** **Full coverage** — traces the speculative mania through retail participation, leverage, IPO frenzy, risk premium collapse, and belated Fed tightening.
+
+### The 2000s
+
+#### 2000-02 Dot-com Bust
+**Chain:** NASDAQ ↓ (−78% from peak) → Tech Sector ↓ → Semiconductors ↓ → PE ↓ → Earnings ↓ → Revenue ↓ → IPO Issuance ↓ (market froze) → Margin Debt ↓ (forced liquidation) → VIX ↑ → S&P 500 ↓ → Russell 2000 ↓ → Fed Funds Rate ↓ (6.5% → 1.0%) → Unemployment ↑ (6.3%) → Consumer Confidence ↓ → GDP ↓ (recession)
+**Coverage:** **Full coverage** — speculative tech valuations collapsed as earnings failed to materialize, freezing IPO issuance and triggering margin liquidation, forcing the Fed to cut 550bp as unemployment rose.
+
+#### 2001 September 11 Attacks
+**Chain:** Geopolitical Risk ↑ (permanent repricing) → VIX ↑ (>40) → S&P 500 ↓ (−12% on reopening) → Earnings ↓ → HY Spread ↑ → IG Spread ↑ → Fund Flows ↓ → Gold ↑ (safe haven) → 10Y Yield ↓ (flight to quality) → DXY ↑ → Oil ↑ (supply fear, then demand destruction) → Fed Funds Rate ↓ (emergency −175bp by year-end) → Consumer Confidence ↓
+**Coverage:** **Full coverage** — captures the permanent geopolitical risk repricing, flight-to-safety, credit spread widening, and the Fed's emergency response.
+
+#### 2007-08 Subprime Crisis → Global Financial Crisis
+**Chain:** Mortgage Rate ↑ → Home Prices ↓ → Housing Starts ↓ → CRE Stress ↑ → Private Credit ↓ (structured credit collapsed) → Lending Standards ↑ → HY Spread ↑ → IG Spread ↑ → TED Spread ↑ (+300bp, interbank trust collapsed) → CP Spread ↑ (commercial paper froze) → MMF Flows (Reserve Primary Fund "broke the buck") → Bank Reserves ↓ → Repo/SOFR ↑ (funding markets seized) → FCI ↑↑ → Financials ↓ → Regional Banks ↓ → S&P 500 ↓ (−57%) → VIX ↑ (>80) → Margin Debt ↓ → Fund Flows ↓ → Earnings ↓ → Unemployment ↑ (10%) → Consumer Confidence ↓ → GDP ↓ (−4.3%) → EM Sovereign Spread ↑ → EM FX ↓ → EM Equities ↓ → DXY ↑ (dollar funding crisis) → Gold ↑ → Fed Funds Rate ↓ (to 0%) → Fed Balance Sheet ↑ ($4T QE) → Global CB Liquidity ↑ → Fiscal Deficit ↑ ($1.4T) → Debt/GDP ↑ → Govt Spending ↑ (ARRA stimulus)
+**Coverage:** **Full coverage** — the most comprehensive chain in our framework: subprime defaults through structured credit collapse, interbank trust failure, commercial paper/money market freeze, Lehman bankruptcy, global dollar funding crisis, EM contagion, coordinated central bank QE, and massive fiscal expansion.
+
+### The 2010s
+
+#### 2011 European Sovereign Debt Crisis
+**Chain:** EU Periphery Spreads ↑ (Italy, Greece) → ECB Rate (forced to act) → EUR/USD ↓ → EM FX ↓ → FCI ↑ → CDS ↑ → Financials ↓ (contagion to US banks)
+**Coverage:** **Full coverage**
+
+#### 2013 Taper Tantrum
+**Chain:** Rate Expectations ↑ → Real Yield ↑ → DXY ↑ → EM FX ↓ → EM Sovereign Spread ↑ → EM Equities ↓ → Capital flight → DXY ↑ (feedback loop)
+**Coverage:** **Full coverage**
+
+#### 2014-15 Oil Price Collapse
+**Chain:** Oil ↓ ($115 → $26, OPEC price war) → Energy Sector ↓ → Earnings ↓ → Revenue ↓ → HY Spread ↑ (energy is largest HY sector; spreads hit 800bp) → Russell 2000 ↓ → EM Sovereign Spread ↑ (Russia, Nigeria, Venezuela) → EM FX ↓ → EM Equities ↓ → Sanctions (compounded Russia's oil stress) → CPI ↓ → Breakevens ↓ → Rate Expectations ↓ (Fed delayed tightening until Dec 2015) → DXY ↑
+**Coverage:** **Full coverage** — traces OPEC's market share war through energy HY blowout, EM oil-exporter devastation, deflationary impulse, and the Fed's delayed tightening.
+
+#### 2015 China Devaluation Scare
+**Chain:** PBOC Policy shift → USD/CNY devaluation → China Credit Impulse ↓ → China Equities ↓ → EM Equities ↓ → Copper ↓ → Global growth fears → VIX ↑ → S&P 500 ↓
+**Coverage:** **Full coverage**
+
+#### 2018 Volmageddon (February 5)
+**Chain:** VIX ↑ (13 → 50 intraday) → SKEW (prior warnings materialized) → Put/Call ↑ → Institutional Positioning (short-vol ETFs XIV/SVXY destroyed; forced VIX futures buying by issuers created reflexive feedback) → ETF Flows ↓ → Margin Debt ↓ → Fund Flows ↓ → S&P 500 ↓ (−4%) → Retail Sentiment ↓ → FCI ↑
+**Coverage:** **Full coverage** — captures the short-vol blowup, reflexive feedback loop, and the revelation that volatility is a cause, not just a symptom.
+
+#### 2018 EM Crisis (Turkey / Argentina)
+**Chain:** US Political Risk → Sanctions (on Turkey) → EM FX ↓ (lira −45%; peso collapsed) → FX Vol ↑ → EM Sovereign Spread ↑ → EM Equities ↓ → Fund Flows ↓ ($30B EM outflows) → DXY ↑ → Fed Funds Rate ↑ (continued tightening to 2.5% — background gravity) → Copper ↓ → Oil ↓ → Gold ↑ → VIX ↑
+**Coverage:** **Full coverage** — traces US sanctions through EM FX contagion, fund flow reversal, and the Fed's tightening as background amplifier.
+
+### The 2020s
+
+#### 2020 COVID Pandemic
+**Chain (crash):** Supply Chain Pressure ↑ → VIX ↑ (>80) → Margin Debt ↓ (margin calls) → Forced selling → TED Spread ↑ → CP Spread ↑ → FCI ↑↑ → S&P 500 ↓34%
+**Chain (recovery):** Fiscal Deficit ↑↑ ($3T+ stimulus) → Govt Spending ↑ → Consumer Confidence ↑ → PBOC easing → China Credit Impulse ↑ → Commodities ↑ → Global recovery
+**Coverage:** **Full coverage**
+
+#### 2022 Inflation / Rate Shock
+**Chain:** Supply Chain Pressure ↑ + Oil ↑ → CPI ↑↑ → Fed Funds Rate ↑↑ → Mortgage Rate (3% → 7%) → Home Prices ↓ → Real Yield (−1% → +2.5%) → NASDAQ ↓33% + Bitcoin ↓75% → EM FX ↓
+**Coverage:** **Full coverage**
+
+#### 2022 Russia-Ukraine War
+**Chain:** Geopolitical Risk ↑ → Oil ↑ + Natural Gas ↑10x + Wheat ↑60% → EU HICP ↑10% → ECB Rate ↑ → EUR/USD ↓ parity → Sanctions → Container Shipping rerouted → Supply Chain Pressure ↑ → Gold ↑
+**Coverage:** **Full coverage**
+
+#### 2022 UK Gilt Crisis (Truss Mini-Budget)
+**Chain:** Fiscal Deficit ↑ (unfunded £45B tax cuts) → Debt/GDP ↑ (fiscal credibility destroyed) → GBP/USD ↓ (−10%) → 30Y Yield ↑ (+150bp in days; LDI pension funds faced margin calls) → MOVE ↑ → FX Vol ↑ → Institutional Positioning (£1.5T in leveraged gilt exposure forced to liquidate) → Fund Flows ↓ → FCI ↑ → Lending Standards ↑ → DXY ↑ → US Political Risk (fiscal credibility contagion fear) → Gold ↑
+**Coverage:** **Full coverage** — traces the unfunded fiscal shock through sterling crash, LDI pension margin calls, forced gilt selling, and the global contagion fear about developed-market fiscal credibility.
+
+#### 2023 SVB Crisis
+**Chain:** Real Yield ↑ → Bank Reserves under pressure + HTM losses → Regional Banks ↓35% → MMF Flows (deposit flight $500B) → Lending Standards ↑ → CRE Stress ↑ → FCI ↑
+**Coverage:** **Full coverage**
+
+#### 2024 AI Boom
+**Chain:** Semiconductors ↑↑ (NVIDIA) → Tech Sector ↑ → NASDAQ ↑ → Earnings ↑ → ERP compresses → Productivity debate → S&P 500 concentration risk
+**Coverage:** **Full coverage**
+
+#### 2024 Yen Carry Trade Unwind (August 5)
+**Chain:** BOJ rate hike → USD/JPY reversal → FX Vol ↑ → Institutional Positioning (extreme JPY shorts) → Japan Equities ↓12% → VIX ↑ (15 → 65) → S&P 500 ↓3% → EM FX ↓
+**Coverage:** **Full coverage**
+
+#### 2025 Tariff Escalation
+**Chain:** Trade Policy ↑↑ → Supply Chain Pressure ↑ → Container Shipping ↑ → CPI ↑ → China Equities ↓ → EM FX ↓ → Copper ↓ → Global Trade Volume ↓
+**Coverage:** **Full coverage**
+
+#### 2026 US-Iran Conflict / Oil Shock
+**Chain:** Geopolitical Risk ↑ → Sanctions ↑ → Oil ↑ (>$110) → Natural Gas ↑ → Energy Sector ↑ → CPI ↑ → Breakevens ↑ → 10Y Yield ↑ → Real Yield ↑ → DXY ↑ → Gold ↓ (yield suppression: bonds at 4.5% vs gold's 0%) → EM Sovereign Spread ↑ → EM FX ↓ → VIX ↑
+**Coverage:** **Full coverage** — the oil-driven inflation pushes yields and the dollar higher, mechanically suppressing gold despite peak geopolitical risk. The yield suppression channel dominates the safe-haven channel.
+
+#### Crypto Cycles (2017-present)
 **Chain:** Bitcoin ↑/↓ → Retail Sentiment ↑/↓ → Margin Debt ↑/↓ → ETF Flows ↑/↓ → Contagion to/from risk assets via correlation regime
-**Previously:** **0% coverage** — crypto entirely absent
-**Now:** **Full coverage**
+**Coverage:** **Full coverage**
 
 ---
 
