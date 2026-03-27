@@ -248,7 +248,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     const positionedNodes = nodes.map((n) => {
       const pos = positions.get(n.id);
       if (pos) {
-        return { ...n, fx: pos[0], fy: pos[1], fz: pos[2] };
+        return { ...n, x: pos[0], y: pos[1], z: pos[2], fx: pos[0], fy: pos[1], fz: pos[2] };
       }
       return n;
     });
