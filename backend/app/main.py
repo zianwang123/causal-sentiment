@@ -121,7 +121,9 @@ async def lifespan(app: FastAPI):
         settings.database_url, isolation_level="AUTOCOMMIT", poolclass=NullPool
     )
     async with autocommit_engine.connect() as ac:
-        for new_val in ("housing", "financial_system", "money_markets", "fiscal_policy", "supply_chain", "private_credit"):
+        # Existing enum values are UPPERCASE (MACRO, MONETARY_POLICY, etc.)
+        # SQLAlchemy sends NodeType.name (UPPERCASE) to Postgres
+        for new_val in ("HOUSING", "FINANCIAL_SYSTEM", "MONEY_MARKETS", "FISCAL_POLICY", "SUPPLY_CHAIN", "PRIVATE_CREDIT"):
             try:
                 await ac.execute(text(f"ALTER TYPE nodetype ADD VALUE IF NOT EXISTS '{new_val}'"))
             except Exception:
