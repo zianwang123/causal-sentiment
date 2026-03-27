@@ -16,35 +16,71 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
 });
 
-// Cluster centroid positions on a sphere — 17 categories
-// Uses Fibonacci sphere to evenly distribute category centers on a sphere of radius R.
-// Each category's nodes will cluster around their centroid, creating a grouped-sphere layout.
-const SPHERE_RADIUS = 250;
+// ── Sphere layout: nodes placed ON the surface of a sphere, grouped by category ──
+// Each category occupies a region. Nodes are placed via Fibonacci spiral within their region.
+const SPHERE_RADIUS = 300;
 const CATEGORY_ORDER = [
-  // Arranged so related categories are adjacent on the sphere
-  "macro", "monetary_policy", "fiscal_policy",        // policy cluster (top)
-  "rates_credit", "financial_system", "money_markets", // plumbing cluster
-  "volatility", "flows_sentiment", "private_credit",   // risk/positioning cluster
-  "equities", "equity_fundamentals", "semiconductors", // equity cluster — note: "semiconductors" is under "equities" NodeType
-  "commodities", "supply_chain", "housing",             // real economy cluster
-  "currencies", "global", "geopolitics",                // international cluster (bottom)
+  "macro", "monetary_policy", "fiscal_policy",
+  "rates_credit", "financial_system", "money_markets",
+  "volatility", "flows_sentiment", "private_credit",
+  "equities", "equity_fundamentals",
+  "commodities", "supply_chain", "housing",
+  "currencies", "global", "geopolitics",
 ];
-const CLUSTER_CENTROIDS: Record<string, [number, number, number]> = (() => {
-  const centroids: Record<string, [number, number, number]> = {};
+
+// Pre-compute category centroid directions on the sphere (Fibonacci distribution)
+const CATEGORY_CENTROIDS: Record<string, { theta: number; phi: number }> = (() => {
+  const result: Record<string, { theta: number; phi: number }> = {};
   const n = CATEGORY_ORDER.length;
   const goldenRatio = (1 + Math.sqrt(5)) / 2;
   for (let i = 0; i < n; i++) {
-    // Fibonacci sphere: even distribution of points
-    const theta = Math.acos(1 - 2 * (i + 0.5) / n); // polar angle [0, pi]
-    const phi = 2 * Math.PI * i / goldenRatio;        // azimuthal angle
-    centroids[CATEGORY_ORDER[i]] = [
-      SPHERE_RADIUS * Math.sin(theta) * Math.cos(phi),
-      SPHERE_RADIUS * Math.cos(theta),
-      SPHERE_RADIUS * Math.sin(theta) * Math.sin(phi),
-    ];
+    result[CATEGORY_ORDER[i]] = {
+      theta: Math.acos(1 - 2 * (i + 0.5) / n),
+      phi: 2 * Math.PI * i / goldenRatio,
+    };
   }
-  return centroids;
+  return result;
 })();
+
+/**
+ * Compute initial (x, y, z) positions for all nodes on a sphere surface.
+ * Nodes in the same category are clustered together in a small region
+ * around their category's centroid on the sphere.
+ */
+function computeSpherePositions(nodes: { id: string; nodeType: string }[]): Map<string, [number, number, number]> {
+  const positions = new Map<string, [number, number, number]>();
+
+  // Group nodes by category
+  const groups = new Map<string, string[]>();
+  for (const n of nodes) {
+    const cat = n.nodeType;
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(n.id);
+  }
+
+  // For each category, distribute nodes in a small cap around the centroid
+  const angularSpread = 0.35; // radians — how wide each category region is on the sphere
+
+  for (const [cat, nodeIds] of groups) {
+    const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
+    const count = nodeIds.length;
+    const golden = (1 + Math.sqrt(5)) / 2;
+
+    for (let i = 0; i < count; i++) {
+      // Fibonacci spiral within the category's cap
+      const frac = count > 1 ? i / (count - 1) : 0;
+      const localTheta = center.theta + angularSpread * (frac - 0.5) * (count > 1 ? 1 : 0);
+      const localPhi = center.phi + angularSpread * (i / golden - Math.floor(i / golden)) * 2 * Math.PI / Math.max(count, 1);
+
+      positions.set(nodeIds[i], [
+        SPHERE_RADIUS * Math.sin(localTheta) * Math.cos(localPhi),
+        SPHERE_RADIUS * Math.cos(localTheta),
+        SPHERE_RADIUS * Math.sin(localTheta) * Math.sin(localPhi),
+      ]);
+    }
+  }
+  return positions;
+}
 
 export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: string[] }) {
   const nodes = useGraphStore((s) => s.nodes);
@@ -162,35 +198,80 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
-  // Tune d3 force layout for 111 nodes — spread them out
-  // Disable link force entirely so edges don't affect node positions
-  // (edges are visual-only, node layout is driven by charge + clustering)
+  // Set initial sphere positions and configure forces
+  const spherePositionsRef = useRef<Map<string, [number, number, number]>>(new Map());
+
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg || nodes.length === 0) return;
+
+    // Compute sphere positions for all nodes
+    const positions = computeSpherePositions(nodes as { id: string; nodeType: string }[]);
+    spherePositionsRef.current = positions;
+
+    // Set initial positions directly on the node objects
+    for (const node of nodesRef.current) {
+      const n = node as any;
+      const pos = positions.get(n.id);
+      if (pos) {
+        n.x = pos[0];
+        n.y = pos[1];
+        n.z = pos[2];
+        n.vx = 0;
+        n.vy = 0;
+        n.vz = 0;
+      }
+    }
+
+    // Remove default forces — we control layout via sphere constraint
+    fg.d3Force("link", null);
+    fg.d3Force("charge").strength(-30); // mild repulsion to prevent overlap within clusters
+    fg.d3Force("center", null); // no centering force — sphere IS centered
+
+    // Sphere surface constraint: push nodes toward the sphere surface
+    fg.d3Force("sphere", (alpha: number) => {
+      const strength = alpha * 0.8;
+      for (const node of nodesRef.current) {
+        const n = node as any;
+        if (n.x === undefined) continue;
+        const dist = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z) || 1;
+        const scale = (SPHERE_RADIUS - dist) / dist * strength;
+        n.vx = (n.vx || 0) + n.x * scale;
+        n.vy = (n.vy || 0) + n.y * scale;
+        n.vz = (n.vz || 0) + n.z * scale;
+      }
+    });
+
+    // Category grouping: pull nodes toward their category region
+    fg.d3Force("cluster", (alpha: number) => {
+      const clusterStrength = alpha * (clustered ? 0.4 : 0.1);
+      for (const node of nodesRef.current) {
+        const n = node as any;
+        const target = spherePositionsRef.current.get(n.id);
+        if (!target || n.x === undefined) continue;
+        n.vx = (n.vx || 0) + (target[0] - n.x) * clusterStrength;
+        n.vy = (n.vy || 0) + (target[1] - n.y) * clusterStrength;
+        n.vz = (n.vz || 0) + (target[2] - n.z) * clusterStrength;
+      }
+    });
+
+    fg.d3ReheatSimulation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes.length]);
+
+  // Update cluster tightness when toggle changes
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
-    const charge = fg.d3Force("charge");
-    if (charge) charge.strength(-200).distanceMax(500);
-    // Remove link force — edges should NOT pull nodes together
-    fg.d3Force("link", null);
-  }, []);
-
-  // Always apply clustering force — nodes grouped by category on the sphere.
-  // "Clustered" toggle controls tightness: tight (nodes snap to centroid) vs loose (spread around it).
-  useEffect(() => {
-    if (!graphRef.current) return;
-    const fg = graphRef.current;
-
     fg.d3Force("cluster", (alpha: number) => {
-      // Tight mode: strong pull to centroid. Loose mode: gentle pull for organic grouping.
-      const strength = alpha * (clustered ? 0.6 : 0.15);
+      const clusterStrength = alpha * (clustered ? 0.4 : 0.1);
       for (const node of nodesRef.current) {
-        const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
         const n = node as any;
-        if (n.x !== undefined) {
-          n.vx = (n.vx || 0) + (centroid[0] - n.x) * strength;
-          n.vy = (n.vy || 0) + (centroid[1] - n.y) * strength;
-          n.vz = (n.vz || 0) + (centroid[2] - n.z) * strength;
-        }
+        const target = spherePositionsRef.current.get(n.id);
+        if (!target || n.x === undefined) continue;
+        n.vx = (n.vx || 0) + (target[0] - n.x) * clusterStrength;
+        n.vy = (n.vy || 0) + (target[1] - n.y) * clusterStrength;
+        n.vz = (n.vz || 0) + (target[2] - n.z) * clusterStrength;
       }
     });
     fg.d3ReheatSimulation();
