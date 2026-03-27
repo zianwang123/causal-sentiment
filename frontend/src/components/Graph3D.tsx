@@ -159,13 +159,15 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   nodesRef.current = nodes;
 
   // Tune d3 force layout for 111 nodes — spread them out
+  // Disable link force entirely so edges don't affect node positions
+  // (edges are visual-only, node layout is driven by charge + clustering)
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
     const charge = fg.d3Force("charge");
     if (charge) charge.strength(-200).distanceMax(500);
-    const link = fg.d3Force("link");
-    if (link) link.distance(100);
+    // Remove link force — edges should NOT pull nodes together
+    fg.d3Force("link", null);
   }, []);
 
   // Apply clustering force when mode changes
@@ -218,23 +220,24 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
   const selectedNodeForEdges = useGraphStore((s) => s.selectedNode);
 
-  const graphData = useMemo(() => {
-    // During simulation, show all edges (simulation overlay handles visibility)
-    if (simulation) return { nodes, links };
+  // Always pass ALL links to the force simulation so node positions stay stable.
+  // Edge VISIBILITY is controlled separately via linkVisibility callback.
+  const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
-    if (edgeDisplayMode === "none") {
-      return { nodes, links: [] };
-    }
+  // Compute which edges should be visible based on display mode
+  const visibleEdgeKeys = useMemo(() => {
+    if (simulation) return null; // null = show all (simulation overlay handles it)
+
+    if (edgeDisplayMode === "none") return new Set<string>();
 
     if (edgeDisplayMode === "selected") {
-      if (!selectedNodeForEdges) return { nodes, links: [] };
+      if (!selectedNodeForEdges) return new Set<string>();
 
       // Full BFS: follow OUTBOUND directed edges from selected node (no hop limit)
       const selId = selectedNodeForEdges.id;
       const reachable = new Set<string>([selId]);
       const queue: string[] = [selId];
 
-      // Build adjacency list for fast BFS (outbound only = directed graph)
       const outbound = new Map<string, string[]>();
       for (const l of links) {
         const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
@@ -254,19 +257,20 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         }
       }
 
-      // Show edges where both source and target are reachable
-      const filteredLinks = links.filter((l) => {
+      const keys = new Set<string>();
+      for (const l of links) {
         const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
         const tgt = typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target;
-        return reachable.has(src) && reachable.has(tgt);
-      });
-
-      return { nodes, links: filteredLinks };
+        if (reachable.has(src) && reachable.has(tgt)) {
+          keys.add(`${src}__${tgt}`);
+        }
+      }
+      return keys;
     }
 
-    // "all" mode: show all edges
-    return { nodes, links };
-  }, [nodes, links, edgeDisplayMode, selectedNodeForEdges, simulation]);
+    // "all" mode
+    return null; // null = show all
+  }, [links, edgeDisplayMode, selectedNodeForEdges, simulation]);
 
   // Pre-compute centrality rank map (avoids O(n² log n) sort inside per-node-per-frame callback)
   const centralityRankMap = useMemo(() => {
@@ -407,6 +411,12 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         linkSource="source"
         linkTarget="target"
         linkOpacity={isDiscovered ? 1.0 : 0.6}
+        linkVisibility={(link: any) => {
+          if (!visibleEdgeKeys) return true; // null = show all
+          const src = typeof link.source === "string" ? link.source : link.source?.id;
+          const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+          return visibleEdgeKeys.has(`${src}__${tgt}`);
+        }}
         linkColor={(link: any) => {
           if (simAffectedEdges) {
             const src = typeof link.source === "string" ? link.source : link.source?.id;
