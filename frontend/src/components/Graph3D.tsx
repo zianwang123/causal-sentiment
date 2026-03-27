@@ -47,7 +47,7 @@ const CATEGORY_CENTROIDS: Record<string, { theta: number; phi: number }> = (() =
  * Nodes in the same category are clustered together in a small region
  * around their category's centroid on the sphere.
  */
-function computeSpherePositions(nodes: { id: string; nodeType: string }[]): Map<string, [number, number, number]> {
+function computeSpherePositions(nodes: { id: string; nodeType: string }[], tight: boolean): Map<string, [number, number, number]> {
   const positions = new Map<string, [number, number, number]>();
 
   // Group nodes by category
@@ -58,8 +58,8 @@ function computeSpherePositions(nodes: { id: string; nodeType: string }[]): Map<
     groups.get(cat)!.push(n.id);
   }
 
-  // For each category, distribute nodes in a small cap around the centroid
-  const angularSpread = 0.35; // radians — how wide each category region is on the sphere
+  // Free: wide spread, categories overlap slightly. Clustered: tight packing, clear separation.
+  const angularSpread = tight ? 0.15 : 0.8;
 
   for (const [cat, nodeIds] of groups) {
     const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
@@ -234,7 +234,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   // Compute sphere positions and pin nodes via fx/fy/fz (fixed position).
   // This bypasses d3-force entirely — nodes are placed exactly on the sphere surface.
   const graphData = useMemo(() => {
-    const positions = computeSpherePositions(nodes as { id: string; nodeType: string }[]);
+    const positions = computeSpherePositions(nodes as { id: string; nodeType: string }[], clustered);
     const positionedNodes = nodes.map((n) => {
       const pos = positions.get(n.id);
       if (pos) {
@@ -243,7 +243,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       return n;
     });
     return { nodes: positionedNodes, links };
-  }, [nodes, links]);
+  }, [nodes, links, clustered]);
 
   // Compute which edges should be visible based on display mode
   const visibleEdgeKeys = useMemo(() => {
