@@ -80,7 +80,7 @@ export default function CategoryMatrix({ onClose }: { onClose: () => void }) {
     const cell = matrix[src]?.[tgt];
     if (!cell || cell.count === 0) return;
     // Filter graph to show only edges between these two categories
-    useGraphStore.setState({ edgeDisplayMode: "all", edgeWeightThreshold: 0 });
+    useGraphStore.setState({ edgeDisplayMode: "all" });
     // Focus camera on a node in the source category
     const srcNode = nodes.find((n) => n.nodeType === src);
     if (srcNode) {

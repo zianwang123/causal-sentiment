@@ -158,6 +158,16 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
+  // Tune d3 force layout for 111 nodes — spread them out
+  useEffect(() => {
+    const fg = graphRef.current;
+    if (!fg) return;
+    const charge = fg.d3Force("charge");
+    if (charge) charge.strength(-200).distanceMax(500);
+    const link = fg.d3Force("link");
+    if (link) link.distance(100);
+  }, []);
+
   // Apply clustering force when mode changes
   useEffect(() => {
     if (!graphRef.current) return;
@@ -166,7 +176,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     if (clustered) {
       // Add a custom force that pulls nodes toward their cluster centroid
       fg.d3Force("cluster", (alpha: number) => {
-        const strength = alpha * 0.3;
+        const strength = alpha * 0.5;
         for (const node of nodesRef.current) {
           const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
           const n = node as any;
@@ -206,39 +216,57 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   }, [focusNodeId, nodes]);
 
   const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
-  const edgeWeightThreshold = useGraphStore((s) => s.edgeWeightThreshold);
   const selectedNodeForEdges = useGraphStore((s) => s.selectedNode);
 
   const graphData = useMemo(() => {
     // During simulation, show all edges (simulation overlay handles visibility)
     if (simulation) return { nodes, links };
 
-    let filteredLinks = links;
-
-    // Edge display mode filter
     if (edgeDisplayMode === "none") {
-      filteredLinks = [];
-    } else if (edgeDisplayMode === "selected" && selectedNodeForEdges) {
+      return { nodes, links: [] };
+    }
+
+    if (edgeDisplayMode === "selected") {
+      if (!selectedNodeForEdges) return { nodes, links: [] };
+
+      // Full BFS: follow OUTBOUND directed edges from selected node (no hop limit)
       const selId = selectedNodeForEdges.id;
-      filteredLinks = links.filter(
-        (l) => {
-          const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
-          const tgt = typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target;
-          return src === selId || tgt === selId;
+      const reachable = new Set<string>([selId]);
+      const queue: string[] = [selId];
+
+      // Build adjacency list for fast BFS (outbound only = directed graph)
+      const outbound = new Map<string, string[]>();
+      for (const l of links) {
+        const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
+        const tgt = typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target;
+        if (!outbound.has(src)) outbound.set(src, []);
+        outbound.get(src)!.push(tgt);
+      }
+
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        const neighbors = outbound.get(nodeId) || [];
+        for (const tgt of neighbors) {
+          if (!reachable.has(tgt)) {
+            reachable.add(tgt);
+            queue.push(tgt);
+          }
         }
-      );
-    } else if (edgeDisplayMode === "selected" && !selectedNodeForEdges) {
-      filteredLinks = []; // No node selected — show no edges
-    }
-    // "all" mode: show everything
+      }
 
-    // Weight threshold filter
-    if (edgeWeightThreshold > 0) {
-      filteredLinks = filteredLinks.filter((l) => (l.weight ?? 0) >= edgeWeightThreshold);
+      // Show edges where both source and target are reachable
+      const filteredLinks = links.filter((l) => {
+        const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
+        const tgt = typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target;
+        return reachable.has(src) && reachable.has(tgt);
+      });
+
+      return { nodes, links: filteredLinks };
     }
 
-    return { nodes, links: filteredLinks };
-  }, [nodes, links, edgeDisplayMode, edgeWeightThreshold, selectedNodeForEdges, simulation]);
+    // "all" mode: show all edges
+    return { nodes, links };
+  }, [nodes, links, edgeDisplayMode, selectedNodeForEdges, simulation]);
 
   // Pre-compute centrality rank map (avoids O(n² log n) sort inside per-node-per-frame callback)
   const centralityRankMap = useMemo(() => {

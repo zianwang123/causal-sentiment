@@ -55,7 +55,7 @@ export default function ChainExplorer({ onClose }: { onClose: () => void }) {
       }
       setActiveChain(chain.id);
       // Switch to "all" mode so chain edges are visible
-      useGraphStore.setState({ edgeDisplayMode: "all", edgeWeightThreshold: 0 });
+      useGraphStore.setState({ edgeDisplayMode: "all" });
       // Focus on first node in chain
       if (chain.nodes.length > 0) {
         focusNode(chain.nodes[0]);

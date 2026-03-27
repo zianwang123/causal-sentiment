@@ -29,9 +29,6 @@ export default function FilterBar() {
   const toggleClustered = useGraphStore((s) => s.toggleClustered);
   const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
   const setEdgeDisplayMode = useGraphStore((s) => s.setEdgeDisplayMode);
-  const edgeWeightThreshold = useGraphStore((s) => s.edgeWeightThreshold);
-  const setEdgeWeightThreshold = useGraphStore((s) => s.setEdgeWeightThreshold);
-  const links = useGraphStore((s) => s.links);
   const regime = useGraphStore((s) => s.regime);
   const fetchRegime = useGraphStore((s) => s.fetchRegime);
   const focusNode = useGraphStore((s) => s.focusNode);
@@ -208,25 +205,6 @@ export default function FilterBar() {
               </button>
             ))}
           </div>
-          {edgeDisplayMode === "all" && (
-            <div>
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Weight ≥ {edgeWeightThreshold.toFixed(2)}</span>
-                <span className="text-gray-500">
-                  {links.filter((l) => (l.weight ?? 0) >= edgeWeightThreshold).length} edges
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={edgeWeightThreshold}
-                onChange={(e) => setEdgeWeightThreshold(parseFloat(e.target.value))}
-                className="w-full h-1.5 mt-1 accent-blue-500 bg-gray-700 rounded-lg appearance-none cursor-pointer"
-              />
-            </div>
-          )}
         </div>
 
         <button
