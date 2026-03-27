@@ -1,6 +1,11 @@
-"""Seed graph topology — ~52 nodes and ~100 causal edges."""
+"""Seed graph topology — 111 nodes and 1071 causal edges.
+
+MVP_NODES / MVP_EDGES are the original 52-node graph (kept for reference).
+ALL_NODES / ALL_EDGES are the full 111-node graph from MACRO_FACTOR_REPORT.md.
+"""
 
 from app.models.graph import EdgeDirection, NodeType
+from app.graph_engine.topology_expanded import EXPANDED_NODES, EXPANDED_EDGES
 
 MVP_NODES = [
     # Macro
@@ -239,3 +244,40 @@ MVP_EDGES = [
     _e("japan_boj_policy", "us_10y_yield", P, 0.2, "BOJ selling JGBs → global yield spillover"),
     _e("japan_boj_policy", "gold", P, 0.2, "BOJ policy shifts → currency volatility → gold demand"),
 ]
+
+# ── Merged topology: expanded (111 nodes, 1071 edges) with MVP overrides ─────
+# Expanded data is the primary source. MVP edges override expanded edges where
+# both exist (same source+target) because MVP edges have hand-tuned weights.
+
+def _merge():
+    """Merge expanded topology with MVP overrides."""
+    # Nodes: expanded is authoritative (superset of MVP)
+    node_map = {n["id"]: n for n in EXPANDED_NODES}
+    # MVP nodes can override descriptions/labels
+    for n in MVP_NODES:
+        if n["id"] in node_map:
+            node_map[n["id"]].update(n)
+        else:
+            node_map[n["id"]] = n
+    all_nodes = list(node_map.values())
+
+    # Edges: start with expanded, then override with MVP (hand-tuned weights)
+    edge_map = {}
+    for e in EXPANDED_EDGES:
+        key = (e["source_id"], e["target_id"])
+        edge_map[key] = e
+    for e in MVP_EDGES:
+        key = (e["source_id"], e["target_id"])
+        if key in edge_map:
+            # MVP has hand-tuned weight — preserve it, but keep expanded lag/description if MVP lacks them
+            merged = {**edge_map[key], **e}
+            if e.get("transmission_lag_hours", 0) == 0 and edge_map[key].get("transmission_lag_hours", 0) > 0:
+                merged["transmission_lag_hours"] = edge_map[key]["transmission_lag_hours"]
+            edge_map[key] = merged
+        else:
+            edge_map[key] = e
+    all_edges = list(edge_map.values())
+
+    return all_nodes, all_edges
+
+ALL_NODES, ALL_EDGES = _merge()

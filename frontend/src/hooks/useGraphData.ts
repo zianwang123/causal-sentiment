@@ -46,6 +46,8 @@ interface GraphStore {
   snapshotTimestamp: string | null;
   focusNodeId: string | null;
   clustered: boolean;
+  edgeDisplayMode: "all" | "selected" | "none";
+  edgeWeightThreshold: number;
   simulation: SimulationResult | null;
   loading: boolean;
   error: string | null;
@@ -64,6 +66,8 @@ interface GraphStore {
   fetchSnapshot: (timestamp: string) => Promise<void>;
   clearSnapshot: () => void;
   toggleClustered: () => void;
+  setEdgeDisplayMode: (mode: "all" | "selected" | "none") => void;
+  setEdgeWeightThreshold: (val: number) => void;
   setSelectedNode: (node: ForceGraphNode | null) => void;
   triggerAnalysis: (nodeIds?: string[]) => Promise<void>;
   updateFromWs: (data: GraphData) => void;
@@ -103,6 +107,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   snapshotTimestamp: null,
   focusNodeId: null,
   clustered: false,
+  edgeDisplayMode: "selected",
+  edgeWeightThreshold: 0.0,
   simulation: null,
   loading: false,
   error: null,
@@ -142,6 +148,9 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
   toggleClustered: () => {
     set((s) => ({ clustered: !s.clustered }));
   },
+
+  setEdgeDisplayMode: (mode) => set({ edgeDisplayMode: mode }),
+  setEdgeWeightThreshold: (val) => set({ edgeWeightThreshold: val }),
 
   fetchRegime: async () => {
     try {

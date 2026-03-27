@@ -16,19 +16,30 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
 });
 
-// Cluster centroid positions (spread in 3D space)
+// Cluster centroid positions (spread in 3D space) — 17 categories
 const CLUSTER_CENTROIDS: Record<string, [number, number, number]> = {
-  macro:              [  0,  150,   0],
-  monetary_policy:    [150,  100,   0],
-  geopolitics:        [-150, 100,   0],
-  rates_credit:       [100,    0, 100],
-  volatility:         [-100,   0, 100],
-  commodities:        [100,    0, -100],
-  equities:           [-100,   0, -100],
-  equity_fundamentals:[  0,  -50, -150],
-  currencies:         [  0,  -50,  150],
-  flows_sentiment:    [150, -100,   0],
-  global:             [-150,-100,   0],
+  // Core macro (top ring)
+  macro:              [  0,  200,   0],
+  monetary_policy:    [180,  130,   0],
+  fiscal_policy:      [-180, 130,   0],
+  // Markets (upper mid ring)
+  rates_credit:       [120,   50, 150],
+  volatility:         [-120,  50, 150],
+  financial_system:   [120,   50,-150],
+  money_markets:      [-120,  50,-150],
+  // Real economy (equator ring)
+  commodities:        [180,    0,  80],
+  equities:           [-180,   0,  80],
+  housing:            [180,    0, -80],
+  supply_chain:       [-180,   0, -80],
+  // Fundamentals & flows (lower mid ring)
+  equity_fundamentals:[  0,  -60, -180],
+  currencies:         [  0,  -60,  180],
+  flows_sentiment:    [140, -100,   0],
+  private_credit:     [-140,-100,   0],
+  // International (bottom)
+  global:             [  0, -180,   0],
+  geopolitics:        [  0, -120, 120],
 };
 
 export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: string[] }) {
@@ -194,7 +205,40 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     useGraphStore.setState({ focusNodeId: null });
   }, [focusNodeId, nodes]);
 
-  const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
+  const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
+  const edgeWeightThreshold = useGraphStore((s) => s.edgeWeightThreshold);
+  const selectedNodeForEdges = useGraphStore((s) => s.selectedNode);
+
+  const graphData = useMemo(() => {
+    // During simulation, show all edges (simulation overlay handles visibility)
+    if (simulation) return { nodes, links };
+
+    let filteredLinks = links;
+
+    // Edge display mode filter
+    if (edgeDisplayMode === "none") {
+      filteredLinks = [];
+    } else if (edgeDisplayMode === "selected" && selectedNodeForEdges) {
+      const selId = selectedNodeForEdges.id;
+      filteredLinks = links.filter(
+        (l) => {
+          const src = typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source;
+          const tgt = typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target;
+          return src === selId || tgt === selId;
+        }
+      );
+    } else if (edgeDisplayMode === "selected" && !selectedNodeForEdges) {
+      filteredLinks = []; // No node selected — show no edges
+    }
+    // "all" mode: show everything
+
+    // Weight threshold filter
+    if (edgeWeightThreshold > 0) {
+      filteredLinks = filteredLinks.filter((l) => (l.weight ?? 0) >= edgeWeightThreshold);
+    }
+
+    return { nodes, links: filteredLinks };
+  }, [nodes, links, edgeDisplayMode, edgeWeightThreshold, selectedNodeForEdges, simulation]);
 
   // Pre-compute centrality rank map (avoids O(n² log n) sort inside per-node-per-frame callback)
   const centralityRankMap = useMemo(() => {

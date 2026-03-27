@@ -677,7 +677,7 @@ async def get_graph_compare(
     edges, Jaccard similarity, and the lists of shared and novel edges.
     """
     from app.causal_discovery.models import DiscoveredGraph
-    from app.graph_engine.topology import MVP_NODES, MVP_EDGES
+    from app.graph_engine.topology import ALL_NODES, ALL_EDGES
     from sqlalchemy import select
 
     # --- load discovered graph ---
@@ -697,8 +697,8 @@ async def get_graph_compare(
         raise HTTPException(status_code=404, detail="No discovered graph found.")
 
     # Expert edges as (source, target) pairs
-    expert_edge_set = {(e["source_id"], e["target_id"]) for e in MVP_EDGES}
-    expert_node_set = {n["id"] for n in MVP_NODES}
+    expert_edge_set = {(e["source_id"], e["target_id"]) for e in ALL_EDGES}
+    expert_node_set = {n["id"] for n in ALL_NODES}
 
     # Discovered edges as (source, target) pairs
     discovered_edge_set = {(e["source"], e["target"]) for e in graph.edges}

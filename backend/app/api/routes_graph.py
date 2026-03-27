@@ -310,6 +310,13 @@ async def get_clusters(session: AsyncSession = Depends(get_session)):
     return ClusterOut(clusters=clusters)
 
 
+@router.get("/chains")
+async def get_dominant_chains():
+    """Return the 25 dominant transmission chains ranked by historical explanatory power."""
+    from app.graph_engine.chains import DOMINANT_CHAINS
+    return DOMINANT_CHAINS
+
+
 class BacktestResultOut(BaseModel):
     node_id: str
     correlation: float | None = None

@@ -34,6 +34,12 @@ class NodeType(str, enum.Enum):
     CURRENCIES = "currencies"
     FLOWS_SENTIMENT = "flows_sentiment"
     GLOBAL = "global"
+    HOUSING = "housing"
+    FINANCIAL_SYSTEM = "financial_system"
+    MONEY_MARKETS = "money_markets"
+    FISCAL_POLICY = "fiscal_policy"
+    SUPPLY_CHAIN = "supply_chain"
+    PRIVATE_CREDIT = "private_credit"
 
 
 class EdgeDirection(str, enum.Enum):

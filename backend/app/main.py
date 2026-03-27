@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import networkx as nx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.api.routes_agent import router as agent_router
 from app.api.routes_graph import router as graph_router, annotations_router
@@ -20,7 +20,7 @@ from app.api.routes_scenario import router as scenario_router
 from app.api.websocket import websocket_endpoint
 from app.db.connection import async_session, engine
 from app.graph_engine.propagation import build_networkx_graph
-from app.graph_engine.topology import MVP_EDGES, MVP_NODES
+from app.graph_engine.topology import ALL_EDGES, ALL_NODES
 from app.causal_discovery.api.routes import router as causal_router
 from app.causal_discovery.models import create_hypertable_if_needed, create_node_values_index, seed_default_anchors
 from app.models.graph import Base, Edge, Node
@@ -56,7 +56,7 @@ async def seed_graph_if_empty():
 
         # Insert missing nodes
         new_node_count = 0
-        for node_data in MVP_NODES:
+        for node_data in ALL_NODES:
             if node_data["id"] not in existing_nodes:
                 session.add(Node(**node_data))
                 new_node_count += 1
@@ -66,7 +66,7 @@ async def seed_graph_if_empty():
 
         # Insert missing edges
         new_edge_count = 0
-        for edge_data in MVP_EDGES:
+        for edge_data in ALL_EDGES:
             key = (edge_data["source_id"], edge_data["target_id"])
             if key not in existing_edges:
                 session.add(Edge(**edge_data))
@@ -111,6 +111,12 @@ async def lifespan(app: FastAPI):
     # Startup: create tables + auto-fix schema drift
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Sync Postgres enum types — create_all doesn't add new values to existing enums
+        for new_val in ("housing", "financial_system", "money_markets", "fiscal_policy", "supply_chain", "private_credit"):
+            try:
+                await conn.execute(text(f"ALTER TYPE nodetype ADD VALUE IF NOT EXISTS '{new_val}'"))
+            except Exception:
+                pass  # Value already exists or enum doesn't exist yet (first run)
         # Detect and fix column mismatches (e.g., upstream added a column to a model
         # but create_all doesn't alter existing tables — only creates new ones)
         from app.db.schema_sync import sync_schemas

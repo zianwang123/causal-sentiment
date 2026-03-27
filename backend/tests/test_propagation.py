@@ -114,10 +114,10 @@ def test_transmission_lag_increases_decay():
 
 
 def test_mvp_graph_builds():
-    from app.graph_engine.topology import MVP_EDGES, MVP_NODES
-    g = build_networkx_graph(MVP_NODES, MVP_EDGES)
-    assert g.number_of_nodes() == len(MVP_NODES)
-    assert g.number_of_edges() == len(MVP_EDGES)
+    from app.graph_engine.topology import ALL_EDGES, ALL_NODES
+    g = build_networkx_graph(ALL_NODES, ALL_EDGES)
+    assert g.number_of_nodes() == len(ALL_NODES)
+    assert g.number_of_edges() == len(ALL_EDGES)
 
     # Propagate from fed_funds_rate and verify it reaches sp500
     result = propagate_signal(g, "fed_funds_rate", 0.5)

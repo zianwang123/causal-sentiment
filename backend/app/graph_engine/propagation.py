@@ -83,8 +83,26 @@ def propagate_signal(
             effective_decay = min(0.9, max(0.1, effective_decay))
 
             # Transmission lag: longer lag = more decay
+            # Tuned for report lag ranges: hours→0.96, days→0.81, weeks→0.37, months→0.12, quarters→0.04
             lag_hours = edge_data.get("transmission_lag_hours", 0.0)
-            lag_factor = 1.0 / (1.0 + 0.1 * lag_hours) if lag_hours > 0 else 1.0
+            lag_factor = 1.0 / (1.0 + 0.01 * lag_hours) if lag_hours > 0 else 1.0
+
+            # Regime-dependent edge sign override (from edge metadata)
+            metadata = edge_data.get("metadata", {}) or {}
+            regime_behavior = metadata.get("regime_behavior", {})
+            if regime and regime in regime_behavior:
+                rb = regime_behavior[regime]
+                if rb == "+":
+                    direction_sign = 1.0
+                elif rb == "-":
+                    direction_sign = -1.0
+                # Weight modifier from threshold dynamics
+            threshold_cfg = metadata.get("threshold", {})
+            if threshold_cfg:
+                trigger_level = threshold_cfg.get("normalized_level", 1.0)
+                source_sentiment = abs(graph.nodes[node_id].get("composite_sentiment", 0.0))
+                if source_sentiment >= trigger_level:
+                    weight *= threshold_cfg.get("multiplier", 2.0)
 
             propagated = current_signal * weight * direction_sign * (1 - effective_decay) * lag_factor
 

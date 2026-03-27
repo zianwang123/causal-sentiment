@@ -15,6 +15,8 @@ import UserGuide from "@/components/UserGuide";
 import NodeLocator from "@/components/NodeLocator";
 import SimulationPanel from "@/components/SimulationPanel";
 import ScenarioPanel from "@/components/ScenarioPanel";
+import ChainExplorer from "@/components/ChainExplorer";
+import CategoryMatrix from "@/components/CategoryMatrix";
 import CausalPanel from "@/components/CausalPanel";
 import CausalAnimationPlayer from "@/components/CausalAnimationPlayer";
 import AutomationToggles from "@/components/AutomationToggles";
@@ -28,6 +30,8 @@ export default function Home() {
   const loading = useGraphStore((s) => s.loading);
   const error = useGraphStore((s) => s.error);
   const [portfolioNodeIds, setPortfolioNodeIds] = useState<string[]>([]);
+  const [chainExplorerOpen, setChainExplorerOpen] = useState(false);
+  const [matrixOpen, setMatrixOpen] = useState(false);
   const graphSource = useCausalStore((s) => s.graphSource);
   const isExpert = graphSource === "expert";
 
@@ -61,6 +65,12 @@ export default function Home() {
         <UserGuide />
         {isExpert && <SimulationPanel />}
         {isExpert && <ScenarioPanel />}
+        {isExpert && chainExplorerOpen && (
+          <ChainExplorer onClose={() => setChainExplorerOpen(false)} />
+        )}
+        {isExpert && matrixOpen && (
+          <CategoryMatrix onClose={() => setMatrixOpen(false)} />
+        )}
         {isExpert && <SentimentTimeline />}
 
         {/* Animation player: above bottom toolbar in discovered mode */}
@@ -75,6 +85,30 @@ export default function Home() {
           {isExpert && <TopologySuggestions />}
           {isExpert && <TimeSlider />}
           {isExpert && <PortfolioPanel onPortfolioNodes={handlePortfolioNodes} />}
+          {isExpert && (
+            <button
+              onClick={() => setChainExplorerOpen((p) => !p)}
+              className={`px-3 py-2 rounded text-xs font-medium transition-colors ${
+                chainExplorerOpen
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800/90 text-gray-300 hover:bg-gray-700 border border-gray-600"
+              }`}
+            >
+              Chains
+            </button>
+          )}
+          {isExpert && (
+            <button
+              onClick={() => setMatrixOpen((p) => !p)}
+              className={`px-3 py-2 rounded text-xs font-medium transition-colors ${
+                matrixOpen
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-800/90 text-gray-300 hover:bg-gray-700 border border-gray-600"
+              }`}
+            >
+              Matrix
+            </button>
+          )}
         </div>
       </main>
     </ErrorBoundary>

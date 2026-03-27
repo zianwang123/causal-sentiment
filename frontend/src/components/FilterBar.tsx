@@ -27,6 +27,11 @@ export default function FilterBar() {
   const lastRun = useGraphStore((s) => s.lastRun);
   const clustered = useGraphStore((s) => s.clustered);
   const toggleClustered = useGraphStore((s) => s.toggleClustered);
+  const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
+  const setEdgeDisplayMode = useGraphStore((s) => s.setEdgeDisplayMode);
+  const edgeWeightThreshold = useGraphStore((s) => s.edgeWeightThreshold);
+  const setEdgeWeightThreshold = useGraphStore((s) => s.setEdgeWeightThreshold);
+  const links = useGraphStore((s) => s.links);
   const regime = useGraphStore((s) => s.regime);
   const fetchRegime = useGraphStore((s) => s.fetchRegime);
   const focusNode = useGraphStore((s) => s.focusNode);
@@ -184,6 +189,46 @@ export default function FilterBar() {
         >
           {clustered ? "Clustered Layout" : "Free Layout"}
         </button>
+
+        {/* Edge visibility controls */}
+        <div className="mt-3 space-y-2">
+          <div className="text-xs text-gray-400 font-medium">Edges</div>
+          <div className="flex gap-1">
+            {(["none", "selected", "all"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setEdgeDisplayMode(mode)}
+                className={`flex-1 text-xs py-1.5 px-1 rounded transition-colors ${
+                  edgeDisplayMode === mode
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-700 hover:bg-gray-600 text-gray-400"
+                }`}
+              >
+                {mode === "none" ? "None" : mode === "selected" ? "Selected" : "All"}
+              </button>
+            ))}
+          </div>
+          {edgeDisplayMode === "all" && (
+            <div>
+              <div className="flex justify-between text-xs text-gray-400">
+                <span>Weight ≥ {edgeWeightThreshold.toFixed(2)}</span>
+                <span className="text-gray-500">
+                  {links.filter((l) => (l.weight ?? 0) >= edgeWeightThreshold).length} edges
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={edgeWeightThreshold}
+                onChange={(e) => setEdgeWeightThreshold(parseFloat(e.target.value))}
+                className="w-full h-1.5 mt-1 accent-blue-500 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+          )}
+        </div>
+
         <button
           onClick={() => {
             setWeightsLoading(true);
