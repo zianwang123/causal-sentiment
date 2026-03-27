@@ -315,7 +315,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   // Force clean remount when graph identity changes (prevents Three.js tick crash
   // when node count changes drastically, e.g. regime switch)
   const currentGraphId = useCausalStore((s) => s.currentGraph?.id);
-  const graphKey = `${graphSource}-${currentGraphId ?? "expert"}`;
+  const graphKey = `${graphSource}-${currentGraphId ?? "expert"}-${clustered ? "c" : "f"}`;
 
   const handleClick = useCallback(
     (node: any) => {
