@@ -16,31 +16,35 @@ const ForceGraph3D = dynamic(() => import("react-force-graph-3d"), {
   ssr: false,
 });
 
-// Cluster centroid positions (spread in 3D space) — 17 categories
-const CLUSTER_CENTROIDS: Record<string, [number, number, number]> = {
-  // Core macro (top ring)
-  macro:              [  0,  200,   0],
-  monetary_policy:    [180,  130,   0],
-  fiscal_policy:      [-180, 130,   0],
-  // Markets (upper mid ring)
-  rates_credit:       [120,   50, 150],
-  volatility:         [-120,  50, 150],
-  financial_system:   [120,   50,-150],
-  money_markets:      [-120,  50,-150],
-  // Real economy (equator ring)
-  commodities:        [180,    0,  80],
-  equities:           [-180,   0,  80],
-  housing:            [180,    0, -80],
-  supply_chain:       [-180,   0, -80],
-  // Fundamentals & flows (lower mid ring)
-  equity_fundamentals:[  0,  -60, -180],
-  currencies:         [  0,  -60,  180],
-  flows_sentiment:    [140, -100,   0],
-  private_credit:     [-140,-100,   0],
-  // International (bottom)
-  global:             [  0, -180,   0],
-  geopolitics:        [  0, -120, 120],
-};
+// Cluster centroid positions on a sphere — 17 categories
+// Uses Fibonacci sphere to evenly distribute category centers on a sphere of radius R.
+// Each category's nodes will cluster around their centroid, creating a grouped-sphere layout.
+const SPHERE_RADIUS = 250;
+const CATEGORY_ORDER = [
+  // Arranged so related categories are adjacent on the sphere
+  "macro", "monetary_policy", "fiscal_policy",        // policy cluster (top)
+  "rates_credit", "financial_system", "money_markets", // plumbing cluster
+  "volatility", "flows_sentiment", "private_credit",   // risk/positioning cluster
+  "equities", "equity_fundamentals", "semiconductors", // equity cluster — note: "semiconductors" is under "equities" NodeType
+  "commodities", "supply_chain", "housing",             // real economy cluster
+  "currencies", "global", "geopolitics",                // international cluster (bottom)
+];
+const CLUSTER_CENTROIDS: Record<string, [number, number, number]> = (() => {
+  const centroids: Record<string, [number, number, number]> = {};
+  const n = CATEGORY_ORDER.length;
+  const goldenRatio = (1 + Math.sqrt(5)) / 2;
+  for (let i = 0; i < n; i++) {
+    // Fibonacci sphere: even distribution of points
+    const theta = Math.acos(1 - 2 * (i + 0.5) / n); // polar angle [0, pi]
+    const phi = 2 * Math.PI * i / goldenRatio;        // azimuthal angle
+    centroids[CATEGORY_ORDER[i]] = [
+      SPHERE_RADIUS * Math.sin(theta) * Math.cos(phi),
+      SPHERE_RADIUS * Math.cos(theta),
+      SPHERE_RADIUS * Math.sin(theta) * Math.sin(phi),
+    ];
+  }
+  return centroids;
+})();
 
 export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: string[] }) {
   const nodes = useGraphStore((s) => s.nodes);
@@ -170,29 +174,25 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
     fg.d3Force("link", null);
   }, []);
 
-  // Apply clustering force when mode changes
+  // Always apply clustering force — nodes grouped by category on the sphere.
+  // "Clustered" toggle controls tightness: tight (nodes snap to centroid) vs loose (spread around it).
   useEffect(() => {
     if (!graphRef.current) return;
     const fg = graphRef.current;
 
-    if (clustered) {
-      // Add a custom force that pulls nodes toward their cluster centroid
-      fg.d3Force("cluster", (alpha: number) => {
-        const strength = alpha * 0.5;
-        for (const node of nodesRef.current) {
-          const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
-          const n = node as any;
-          if (n.x !== undefined) {
-            n.vx = (n.vx || 0) + (centroid[0] - n.x) * strength;
-            n.vy = (n.vy || 0) + (centroid[1] - n.y) * strength;
-            n.vz = (n.vz || 0) + (centroid[2] - n.z) * strength;
-          }
+    fg.d3Force("cluster", (alpha: number) => {
+      // Tight mode: strong pull to centroid. Loose mode: gentle pull for organic grouping.
+      const strength = alpha * (clustered ? 0.6 : 0.15);
+      for (const node of nodesRef.current) {
+        const centroid = CLUSTER_CENTROIDS[(node as any).nodeType] || [0, 0, 0];
+        const n = node as any;
+        if (n.x !== undefined) {
+          n.vx = (n.vx || 0) + (centroid[0] - n.x) * strength;
+          n.vy = (n.vy || 0) + (centroid[1] - n.y) * strength;
+          n.vz = (n.vz || 0) + (centroid[2] - n.z) * strength;
         }
-      });
-    } else {
-      // Remove cluster force
-      fg.d3Force("cluster", null);
-    }
+      }
+    });
     fg.d3ReheatSimulation();
   }, [clustered]);
 
