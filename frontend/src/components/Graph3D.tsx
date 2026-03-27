@@ -198,84 +198,14 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
 
-  // Set initial sphere positions and configure forces
-  const spherePositionsRef = useRef<Map<string, [number, number, number]>>(new Map());
-
-  useEffect(() => {
-    const fg = graphRef.current;
-    if (!fg || nodes.length === 0) return;
-
-    // Compute sphere positions for all nodes
-    const positions = computeSpherePositions(nodes as { id: string; nodeType: string }[]);
-    spherePositionsRef.current = positions;
-
-    // Set initial positions directly on the node objects
-    for (const node of nodesRef.current) {
-      const n = node as any;
-      const pos = positions.get(n.id);
-      if (pos) {
-        n.x = pos[0];
-        n.y = pos[1];
-        n.z = pos[2];
-        n.vx = 0;
-        n.vy = 0;
-        n.vz = 0;
-      }
-    }
-
-    // Remove default forces — we control layout via sphere constraint
-    fg.d3Force("link", null);
-    fg.d3Force("charge").strength(-30); // mild repulsion to prevent overlap within clusters
-    fg.d3Force("center", null); // no centering force — sphere IS centered
-
-    // Sphere surface constraint: push nodes toward the sphere surface
-    fg.d3Force("sphere", (alpha: number) => {
-      const strength = alpha * 0.8;
-      for (const node of nodesRef.current) {
-        const n = node as any;
-        if (n.x === undefined) continue;
-        const dist = Math.sqrt(n.x * n.x + n.y * n.y + n.z * n.z) || 1;
-        const scale = (SPHERE_RADIUS - dist) / dist * strength;
-        n.vx = (n.vx || 0) + n.x * scale;
-        n.vy = (n.vy || 0) + n.y * scale;
-        n.vz = (n.vz || 0) + n.z * scale;
-      }
-    });
-
-    // Category grouping: pull nodes toward their category region
-    fg.d3Force("cluster", (alpha: number) => {
-      const clusterStrength = alpha * (clustered ? 0.4 : 0.1);
-      for (const node of nodesRef.current) {
-        const n = node as any;
-        const target = spherePositionsRef.current.get(n.id);
-        if (!target || n.x === undefined) continue;
-        n.vx = (n.vx || 0) + (target[0] - n.x) * clusterStrength;
-        n.vy = (n.vy || 0) + (target[1] - n.y) * clusterStrength;
-        n.vz = (n.vz || 0) + (target[2] - n.z) * clusterStrength;
-      }
-    });
-
-    fg.d3ReheatSimulation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.length]);
-
-  // Update cluster tightness when toggle changes
+  // Disable d3 simulation entirely on mount — we use fixed positions on a sphere
   useEffect(() => {
     const fg = graphRef.current;
     if (!fg) return;
-    fg.d3Force("cluster", (alpha: number) => {
-      const clusterStrength = alpha * (clustered ? 0.4 : 0.1);
-      for (const node of nodesRef.current) {
-        const n = node as any;
-        const target = spherePositionsRef.current.get(n.id);
-        if (!target || n.x === undefined) continue;
-        n.vx = (n.vx || 0) + (target[0] - n.x) * clusterStrength;
-        n.vy = (n.vy || 0) + (target[1] - n.y) * clusterStrength;
-        n.vz = (n.vz || 0) + (target[2] - n.z) * clusterStrength;
-      }
-    });
-    fg.d3ReheatSimulation();
-  }, [clustered]);
+    fg.d3Force("link", null);
+    fg.d3Force("charge", null);
+    fg.d3Force("center", null);
+  }, []);
 
   // Handle focusNodeId from store (triggered by NodeLocator)
   useEffect(() => {
@@ -301,9 +231,19 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
   const edgeDisplayMode = useGraphStore((s) => s.edgeDisplayMode);
   const selectedNodeForEdges = useGraphStore((s) => s.selectedNode);
 
-  // Always pass ALL links to the force simulation so node positions stay stable.
-  // Edge VISIBILITY is controlled separately via linkVisibility callback.
-  const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
+  // Compute sphere positions and pin nodes via fx/fy/fz (fixed position).
+  // This bypasses d3-force entirely — nodes are placed exactly on the sphere surface.
+  const graphData = useMemo(() => {
+    const positions = computeSpherePositions(nodes as { id: string; nodeType: string }[]);
+    const positionedNodes = nodes.map((n) => {
+      const pos = positions.get(n.id);
+      if (pos) {
+        return { ...n, fx: pos[0], fy: pos[1], fz: pos[2] };
+      }
+      return n;
+    });
+    return { nodes: positionedNodes, links };
+  }, [nodes, links]);
 
   // Compute which edges should be visible based on display mode
   const visibleEdgeKeys = useMemo(() => {
@@ -415,6 +355,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         key={graphKey}
         ref={graphRef}
         graphData={graphData}
+        cooldownTicks={0}
         nodeId="id"
         nodeLabel={(node: any) => {
           const isAnomaly = anomalyNodeIds.has(node.id);
