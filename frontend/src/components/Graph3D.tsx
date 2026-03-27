@@ -72,7 +72,7 @@ function computeSpherePositions(nodes: { id: string; nodeType: string }[], clust
       groups.get(cat)!.push(n.id);
     }
 
-    const angularSpread = 0.45;
+    const angularSpread = 0.65;
     for (const [cat, nodeIds] of groups) {
       const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
       const count = nodeIds.length;
@@ -450,6 +450,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           const tgt = typeof link.target === "string" ? link.target : link.target?.id;
           return visibleEdgeKeys.has(`${src}__${tgt}`);
         }}
+        linkCurvature={0}
         linkColor={(link: any) => {
           if (simAffectedEdges) {
             const src = typeof link.source === "string" ? link.source : link.source?.id;
@@ -498,6 +499,12 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           return edgeDirectionColor(link.direction);
         }}
         linkWidth={(link: any) => {
+          // Ensure hidden edges have zero width
+          if (visibleEdgeKeys) {
+            const src = typeof link.source === "string" ? link.source : link.source?.id;
+            const tgt = typeof link.target === "string" ? link.target : link.target?.id;
+            if (!visibleEdgeKeys.has(`${src}__${tgt}`)) return 0;
+          }
           if (simAffectedEdges) {
             const src = typeof link.source === "string" ? link.source : link.source?.id;
             const tgt = typeof link.target === "string" ? link.target : link.target?.id;
@@ -533,6 +540,12 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           return 0.4 + w * w * 5;
         }}
         linkDirectionalParticles={(link: any) => {
+          // No particles on hidden edges
+          if (visibleEdgeKeys) {
+            const s = typeof link.source === "string" ? link.source : link.source?.id;
+            const t = typeof link.target === "string" ? link.target : link.target?.id;
+            if (!visibleEdgeKeys.has(`${s}__${t}`)) return 0;
+          }
           if (simAffectedEdges) {
             const src = typeof link.source === "string" ? link.source : link.source?.id;
             const tgt = typeof link.target === "string" ? link.target : link.target?.id;
