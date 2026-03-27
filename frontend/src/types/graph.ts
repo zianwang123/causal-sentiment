@@ -55,6 +55,9 @@ export interface ForceGraphNode {
   x?: number;
   y?: number;
   z?: number;
+  fx?: number;
+  fy?: number;
+  fz?: number;
 }
 
 export interface ForceGraphLink {

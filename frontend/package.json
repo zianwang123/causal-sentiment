@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "postinstall": "sed -i.bak \"s/state.layout\\[isD3Sim ? 'tick' : 'step'\\]();/if (state.layout) state.layout[isD3Sim ? 'tick' : 'step'](); else return;/\" node_modules/three-forcegraph/dist/three-forcegraph.mjs && rm -f node_modules/three-forcegraph/dist/three-forcegraph.mjs.bak 2>/dev/null || true",
+    "postinstall": "sed -i.bak \"s/state.layout\\[isD3Sim ? 'tick' : 'step'\\]();/if (state.layout) state.layout[isD3Sim ? 'tick' : 'step']();/\" node_modules/three-forcegraph/dist/three-forcegraph.mjs && rm -f node_modules/three-forcegraph/dist/three-forcegraph.mjs.bak 2>/dev/null || true",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

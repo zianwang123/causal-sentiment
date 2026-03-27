@@ -43,7 +43,7 @@ export default function FilterBar() {
 
   const fetchLLMConfig = useCallback(() => {
     fetch(`${API}/api/agent/llm-config`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data: LLMConfig) => setLlmConfig(data))
       .catch((e) => console.error("Failed to fetch LLM config:", e));
   }, []);
@@ -54,7 +54,7 @@ export default function FilterBar() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider }),
     })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data: LLMConfig) => setLlmConfig(data))
       .catch((e) => console.error("Failed to switch LLM provider:", e));
   }, []);
@@ -122,7 +122,7 @@ export default function FilterBar() {
                     e.stopPropagation();
                     setNarrativeLoading(true);
                     fetch(`${API}/api/graph/regime/narrative`, { method: "POST" })
-                      .then((r) => r.json())
+                      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
                       .then((data) => {
                         setNarrative(data.narrative);
                         setNarrativeDrivers(data.top_drivers || []);
@@ -212,7 +212,7 @@ export default function FilterBar() {
             setWeightsLoading(true);
             setWeightsResult(null);
             fetch(`${API}/api/graph/weights/recalculate`, { method: "POST" })
-              .then((r) => r.json())
+              .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
               .then((data) => setWeightsResult(`${data.edges_updated} edges updated`))
               .catch(() => setWeightsResult("Failed"))
               .finally(() => setWeightsLoading(false));

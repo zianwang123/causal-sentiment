@@ -46,7 +46,7 @@ export default function ScenarioPanel() {
 
   const fetchLLMConfig = useCallback(() => {
     fetch(`${API_URL}/api/agent/llm-config`)
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
         setLlmProvider(data.provider || "");
         setLlmModel(data.provider === "openai" ? data.openai_model : data.anthropic_model);
@@ -60,7 +60,7 @@ export default function ScenarioPanel() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ provider }),
     })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => {
         setLlmProvider(data.provider || "");
         setLlmModel(data.provider === "openai" ? data.openai_model : data.anthropic_model);
@@ -691,8 +691,8 @@ function BranchCard({
 function ComparisonView({ branches }: { branches: CompareBranchEntry[] }) {
   const rows = useMemo<CompareNodeRow[]>(() => {
     const [a, b] = branches;
-    const shocksA = new Map(a.shocks.map((s) => [s.node_id, s.shock_value]));
-    const shocksB = new Map(b.shocks.map((s) => [s.node_id, s.shock_value]));
+    const shocksA = new Map((a.shocks ?? []).map((s) => [s.node_id, s.shock_value]));
+    const shocksB = new Map((b.shocks ?? []).map((s) => [s.node_id, s.shock_value]));
     const allNodes = new Set([...shocksA.keys(), ...shocksB.keys()]);
 
     return [...allNodes]

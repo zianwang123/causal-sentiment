@@ -93,7 +93,7 @@ function AnnotationsSection({ nodeId }: { nodeId: string }) {
   useEffect(() => {
     const controller = new AbortController();
     fetch(`${API}/api/annotations?node_id=${nodeId}`, { signal: controller.signal })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data) => setAnnotations(data))
       .catch((e) => {
         if (e.name !== "AbortError") setAnnotations([]);
@@ -275,7 +275,7 @@ export default function NodePanel() {
     const controller = new AbortController();
     setRawLoading(true);
     fetch(`${API}/api/graph/raw-data/${selectedNode.id}?limit=5`, { signal: controller.signal })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((data: RawDataPoint[]) => {
         setRawData(data);
       })

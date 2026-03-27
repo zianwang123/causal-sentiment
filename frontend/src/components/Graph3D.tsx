@@ -252,7 +252,16 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
       }
       return n;
     });
-    return { nodes: positionedNodes, links };
+    // Create fresh link objects with string source/target to force d3-force to
+    // re-resolve references to the NEW node objects. Without this, d3's forceLink
+    // skips resolution when link.source is already an object (typeof !== "object"),
+    // leaving links pointing to stale node objects from the previous layout.
+    const freshLinks = links.map((l) => ({
+      ...l,
+      source: typeof l.source === "object" ? (l.source as ForceGraphNode).id : l.source,
+      target: typeof l.target === "object" ? (l.target as ForceGraphNode).id : l.target,
+    }));
+    return { nodes: positionedNodes, links: freshLinks };
   }, [nodes, links, clustered]);
 
   // Compute which edges should be visible based on display mode
@@ -365,7 +374,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         key={graphKey}
         ref={graphRef}
         graphData={graphData}
-        cooldownTicks={0}
+        cooldownTicks={1}
         enableNodeDrag={false}
         nodeId="id"
         nodeLabel={(node: any) => {
@@ -594,7 +603,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
             const pPhase = Math.pow(animationProgress, 3);
             if (pPhase < 0.3) return "#888888";
             const srcId2 = typeof link.source === "string" ? link.source : link.source?.id;
-            const srcNode2 = nodes.find((n: any) => n.id === srcId2);
+            const srcNode2 = nodeMap.get(srcId2);
             const s2 = srcNode2?.sentiment ?? 0;
             const sign2 = link.direction === "negative" ? -s2 : s2;
             if (sign2 > 0.001) return "#4ade80";
@@ -603,8 +612,8 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
           }
           // Normal: force strong color based on sign
           const srcId = typeof link.source === "string" ? link.source : link.source?.id;
-          const srcNode = nodes.find((n: any) => n.id === srcId);
-          const srcSentiment = srcNode?.sentiment ?? 0;
+          const srcNode3 = nodeMap.get(srcId);
+          const srcSentiment = srcNode3?.sentiment ?? 0;
           const effectiveSign = link.direction === "negative" ? -srcSentiment : srcSentiment;
           if (effectiveSign > 0.001) return "#4ade80";
           if (effectiveSign < -0.001) return "#f87171";

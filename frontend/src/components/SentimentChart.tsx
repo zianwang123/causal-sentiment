@@ -20,19 +20,25 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
   const [range, setRange] = useState<Range>(30);
   const [data, setData] = useState<HistoryPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch history data
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
+    setError(null);
     fetch(`${API}/api/graph/sentiment/history/${nodeId}?days=${range}`, { signal: controller.signal })
-      .then((r) => r.json())
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then((d: HistoryPoint[]) => {
         setData(d);
         setLoading(false);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setLoading(false);
+        if (e.name !== "AbortError") {
+          setError("Failed to load history");
+          setData([]);
+          setLoading(false);
+        }
       });
     return () => controller.abort();
   }, [nodeId, range]);
@@ -150,6 +156,10 @@ export default function SentimentChart({ nodeId }: { nodeId: string }) {
       {loading ? (
         <div className="h-[160px] bg-gray-800/50 rounded flex items-center justify-center text-xs text-gray-500">
           Loading...
+        </div>
+      ) : error ? (
+        <div className="h-[160px] bg-gray-800/50 rounded flex items-center justify-center text-xs text-red-400">
+          {error}
         </div>
       ) : data.length === 0 ? (
         <div className="h-[160px] bg-gray-800/50 rounded flex items-center justify-center text-xs text-gray-500">
