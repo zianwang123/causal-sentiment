@@ -72,7 +72,7 @@ function computeSpherePositions(nodes: { id: string; nodeType: string }[], clust
       groups.get(cat)!.push(n.id);
     }
 
-    const angularSpread = 0.25;
+    const angularSpread = 0.45;
     for (const [cat, nodeIds] of groups) {
       const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
       const count = nodeIds.length;
