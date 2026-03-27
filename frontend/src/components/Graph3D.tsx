@@ -47,38 +47,48 @@ const CATEGORY_CENTROIDS: Record<string, { theta: number; phi: number }> = (() =
  * Nodes in the same category are clustered together in a small region
  * around their category's centroid on the sphere.
  */
-function computeSpherePositions(nodes: { id: string; nodeType: string }[], tight: boolean): Map<string, [number, number, number]> {
+function computeSpherePositions(nodes: { id: string; nodeType: string }[], clustered: boolean): Map<string, [number, number, number]> {
   const positions = new Map<string, [number, number, number]>();
+  const golden = (1 + Math.sqrt(5)) / 2;
 
-  // Group nodes by category
-  const groups = new Map<string, string[]>();
-  for (const n of nodes) {
-    const cat = n.nodeType;
-    if (!groups.has(cat)) groups.set(cat, []);
-    groups.get(cat)!.push(n.id);
-  }
-
-  // Free: wide spread, categories overlap slightly. Clustered: tight packing, clear separation.
-  const angularSpread = tight ? 0.15 : 0.8;
-
-  for (const [cat, nodeIds] of groups) {
-    const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
-    const count = nodeIds.length;
-    const golden = (1 + Math.sqrt(5)) / 2;
-
-    for (let i = 0; i < count; i++) {
-      // Fibonacci spiral within the category's cap
-      const frac = count > 1 ? i / (count - 1) : 0;
-      const localTheta = center.theta + angularSpread * (frac - 0.5) * (count > 1 ? 1 : 0);
-      const localPhi = center.phi + angularSpread * (i / golden - Math.floor(i / golden)) * 2 * Math.PI / Math.max(count, 1);
-
-      positions.set(nodeIds[i], [
-        SPHERE_RADIUS * Math.sin(localTheta) * Math.cos(localPhi),
-        SPHERE_RADIUS * Math.cos(localTheta),
-        SPHERE_RADIUS * Math.sin(localTheta) * Math.sin(localPhi),
+  if (!clustered) {
+    // FREE LAYOUT: single Fibonacci spiral of ALL nodes — perfectly equidistant on sphere
+    const n = nodes.length;
+    for (let i = 0; i < n; i++) {
+      const theta = Math.acos(1 - 2 * (i + 0.5) / n);
+      const phi = 2 * Math.PI * i / golden;
+      positions.set(nodes[i].id, [
+        SPHERE_RADIUS * Math.sin(theta) * Math.cos(phi),
+        SPHERE_RADIUS * Math.cos(theta),
+        SPHERE_RADIUS * Math.sin(theta) * Math.sin(phi),
       ]);
     }
+  } else {
+    // CLUSTERED LAYOUT: nodes grouped by category, each category in a tight region
+    const groups = new Map<string, string[]>();
+    for (const n of nodes) {
+      const cat = n.nodeType;
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(n.id);
+    }
+
+    const angularSpread = 0.25;
+    for (const [cat, nodeIds] of groups) {
+      const center = CATEGORY_CENTROIDS[cat] || { theta: Math.PI / 2, phi: 0 };
+      const count = nodeIds.length;
+      for (let i = 0; i < count; i++) {
+        const frac = count > 1 ? i / (count - 1) : 0;
+        const localTheta = center.theta + angularSpread * (frac - 0.5) * (count > 1 ? 1 : 0);
+        const localPhi = center.phi + angularSpread * (i / golden - Math.floor(i / golden)) * 2 * Math.PI / Math.max(count, 1);
+        positions.set(nodeIds[i], [
+          SPHERE_RADIUS * Math.sin(localTheta) * Math.cos(localPhi),
+          SPHERE_RADIUS * Math.cos(localTheta),
+          SPHERE_RADIUS * Math.sin(localTheta) * Math.sin(localPhi),
+        ]);
+      }
+    }
   }
+
   return positions;
 }
 
@@ -356,6 +366,7 @@ export default function Graph3D({ portfolioNodeIds = [] }: { portfolioNodeIds?: 
         ref={graphRef}
         graphData={graphData}
         cooldownTicks={0}
+        enableNodeDrag={false}
         nodeId="id"
         nodeLabel={(node: any) => {
           const isAnomaly = anomalyNodeIds.has(node.id);
