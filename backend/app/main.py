@@ -18,6 +18,8 @@ from app.api.routes_graph import router as graph_router, annotations_router
 from app.api.routes_portfolio import router as portfolio_router
 from app.api.routes_scenario import router as scenario_router
 from app.api.websocket import websocket_endpoint
+from sqlalchemy.ext.asyncio import create_async_engine
+from app.config import settings
 from app.db.connection import async_session, engine
 from app.graph_engine.propagation import build_networkx_graph
 from app.graph_engine.topology import ALL_EDGES, ALL_NODES
@@ -111,12 +113,22 @@ async def lifespan(app: FastAPI):
     # Startup: create tables + auto-fix schema drift
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Sync Postgres enum types — create_all doesn't add new values to existing enums
+
+    # Sync Postgres enum types — ALTER TYPE ADD VALUE must run outside a transaction
+    # (PostgreSQL requires each ADD VALUE to auto-commit independently)
+    from sqlalchemy.pool import NullPool
+    autocommit_engine = create_async_engine(
+        settings.database_url, isolation_level="AUTOCOMMIT", poolclass=NullPool
+    )
+    async with autocommit_engine.connect() as ac:
         for new_val in ("housing", "financial_system", "money_markets", "fiscal_policy", "supply_chain", "private_credit"):
             try:
-                await conn.execute(text(f"ALTER TYPE nodetype ADD VALUE IF NOT EXISTS '{new_val}'"))
+                await ac.execute(text(f"ALTER TYPE nodetype ADD VALUE IF NOT EXISTS '{new_val}'"))
             except Exception:
                 pass  # Value already exists or enum doesn't exist yet (first run)
+    await autocommit_engine.dispose()
+
+    async with engine.begin() as conn:
         # Detect and fix column mismatches (e.g., upstream added a column to a model
         # but create_all doesn't alter existing tables — only creates new ones)
         from app.db.schema_sync import sync_schemas
